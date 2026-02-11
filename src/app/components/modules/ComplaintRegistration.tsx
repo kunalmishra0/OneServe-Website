@@ -43,7 +43,8 @@ export function ComplaintRegistration() {
     title: "",
     category: "",
     description: "",
-    address: "",
+    address_line_1: "",
+    address_line_2: "",
     state: "",
     city: "",
     pincode: "",
@@ -121,10 +122,12 @@ export function ComplaintRegistration() {
     // Simulate location extraction
     setTimeout(() => {
       setAnalyzingImage(false);
-      if (Math.random() > 0.3 && !formData.address) {
+      if (Math.random() > 0.3 && !formData.address_line_1) {
         setFormData((prev) => ({
           ...prev,
-          address: "123, Civic Center Road",
+          ...prev,
+          address_line_1: "123, Civic Center Road",
+          address_line_2: "Near City Hall",
           state: "Delhi",
           city: "New Delhi",
           pincode: "110001",
@@ -137,15 +140,7 @@ export function ComplaintRegistration() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const getFullLocation = () => {
-    const parts = [
-      formData.address,
-      formData.city,
-      formData.state,
-      formData.pincode,
-    ].filter(Boolean);
-    return parts.join(", ");
-  };
+  /* Removed getFullLocation as we now store split fields */
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,13 +161,13 @@ export function ComplaintRegistration() {
 
     // Location is compulsory
     if (
-      !formData.address.trim() ||
+      !formData.address_line_1.trim() ||
       !formData.city.trim() ||
       !formData.state.trim() ||
       !formData.pincode.trim()
     ) {
       setError(
-        "Please fill in all address fields (Address, City, State, Pincode).",
+        "Please fill in all mandatory address fields (Address Line 1, City, State, Pincode).",
       );
       return;
     }
@@ -192,7 +187,12 @@ export function ComplaintRegistration() {
               ? formData.description
               : `${formData.title} (Image Complaint)`,
             category: formData.category,
-            location_text: getFullLocation(),
+            // location_text: getFullLocation(), // Removed in favor of split fields
+            address_line_1: formData.address_line_1,
+            address_line_2: formData.address_line_2,
+            city: formData.city,
+            state: formData.state,
+            pincode: formData.pincode,
             images: [], // Will update after upload
             status: "pending_analysis",
           },
@@ -265,7 +265,12 @@ export function ComplaintRegistration() {
           user_id: user.id,
           description: rawData.description,
           category: rawData.category,
-          location_text: rawData.location_text,
+          // location_text: rawData.location_text,
+          address_line_1: rawData.address_line_1,
+          address_line_2: rawData.address_line_2,
+          city: rawData.city,
+          state: rawData.state,
+          pincode: rawData.pincode,
           images: imageUrls,
           priority_score: parseFloat(randomPriority),
           admin_visible: parseFloat(randomPriority) > 5, // Simple logic
@@ -286,7 +291,8 @@ export function ComplaintRegistration() {
         title: "",
         category: "",
         description: "",
-        address: "",
+        address_line_1: "",
+        address_line_2: "",
         state: "",
         city: "",
         pincode: "",
@@ -560,19 +566,22 @@ export function ComplaintRegistration() {
               onClick={() => {
                 setError(null);
                 if (navigator.geolocation) {
-                  setFormData((prev) => ({ ...prev, address: "Finding..." }));
+                  setFormData((prev) => ({
+                    ...prev,
+                    address_line_1: "Finding...",
+                  }));
                   navigator.geolocation.getCurrentPosition(
                     (pos) =>
                       setFormData((prev) => ({
                         ...prev,
-                        address: `Lat: ${pos.coords.latitude}, Long: ${pos.coords.longitude}`,
+                        address_line_1: `Lat: ${pos.coords.latitude}, Long: ${pos.coords.longitude}`,
                         state: "Delhi",
                         city: "New Delhi",
                         pincode: "110001",
                       })),
                     (err) => {
                       console.error("Geolocation error:", err);
-                      setFormData((prev) => ({ ...prev, address: "" }));
+                      setFormData((prev) => ({ ...prev, address_line_1: "" }));
                       setError(
                         "Location access denied. Please enable GPS or enter address manually.",
                       );
@@ -589,17 +598,26 @@ export function ComplaintRegistration() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Address Line */}
+            {/* Address Line 1 */}
             <div className="md:col-span-2">
               <input
                 type="text"
-                placeholder="Street Address / Landmark"
-                value={formData.address}
+                placeholder="Details of Location (Street/Area)"
+                value={formData.address_line_1}
                 onChange={(e) =>
-                  setFormData({ ...formData, address: e.target.value })
+                  setFormData({ ...formData, address_line_1: e.target.value })
+                }
+                className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 ${analyzingImage ? "animate-pulse bg-gray-50" : ""}`}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Landmark (Optional)"
+                value={formData.address_line_2}
+                onChange={(e) =>
+                  setFormData({ ...formData, address_line_2: e.target.value })
                 }
                 className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${analyzingImage ? "animate-pulse bg-gray-50" : ""}`}
-                required
               />
             </div>
 

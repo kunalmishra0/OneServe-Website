@@ -106,11 +106,24 @@ export function ComplaintTracking() {
           // Merge Data
           for (const raw of rawData) {
             const processed = processedData.find((p) => p.id === raw.id);
+
+            // Construct location string from split fields (or fallback to old field if migration pending)
+            const locationStr =
+              [
+                raw.address_line_1,
+                raw.address_line_2,
+                raw.city,
+                raw.state,
+                raw.pincode,
+              ]
+                .filter(Boolean)
+                .join(", ") || raw.location_text;
+
             enrichedComplaints.push({
               id: raw.id,
               description: raw.description, // or processed.description
               category: raw.category,
-              location: raw.location_text,
+              location: locationStr,
               created_at: raw.created_at,
               images: raw.images, // Use Raw images (or processed if AI filtered them)
               status: processed ? processed.complaint_status : "analyzing", // Show 'analyzing' if not yet processed
@@ -123,17 +136,24 @@ export function ComplaintTracking() {
         } else {
           // If fetching processed failed or empty, just show raw as 'submitted/analyzing'
           enrichedComplaints.push(
-            ...rawData.map((r) => ({
-              id: r.id,
-              description: r.description,
-              category: r.category,
-              location: r.location_text,
-              created_at: r.created_at,
-              images: r.images,
-              status: r.status === "processed" ? "analyzing" : "submitted", // If raw says processed but we found no record, it's weird.
-              priority_score: 0,
-              admin_visible: false,
-            })),
+            ...rawData.map((r) => {
+              const locationStr =
+                [r.address_line_1, r.address_line_2, r.city, r.state, r.pincode]
+                  .filter(Boolean)
+                  .join(", ") || r.location_text;
+
+              return {
+                id: r.id,
+                description: r.description,
+                category: r.category,
+                location: locationStr,
+                created_at: r.created_at,
+                images: r.images,
+                status: r.status === "processed" ? "analyzing" : "submitted", // If raw says processed but we found no record, it's weird.
+                priority_score: 0,
+                admin_visible: false,
+              };
+            }),
           );
         }
         setComplaints(enrichedComplaints);

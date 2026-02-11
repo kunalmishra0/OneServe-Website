@@ -46,15 +46,19 @@ Stores additional information specific to administrators. Linked 1:1 with `profi
 
 Stores the initial raw submission from the citizen.
 
-| Column          | Type   | Description                         |
-| :-------------- | :----- | :---------------------------------- |
-| `id`            | uuid   | PK, auto-generated.                 |
-| `user_id`       | uuid   | FK to `citizens.id`.                |
-| `title`         | text   | Short title.                        |
-| `description`   | text   | Full issue details.                 |
-| `location_text` | text   | Formatted address string.           |
-| `images`        | text[] | Array of **Supabase Storage URLs**. |
-| `status`        | text   | 'pending_analysis' or 'processed'.  |
+| Column           | Type   | Description                         |
+| :--------------- | :----- | :---------------------------------- |
+| `id`             | uuid   | PK, auto-generated.                 |
+| `user_id`        | uuid   | FK to `citizens.id`.                |
+| `title`          | text   | Short title.                        |
+| `description`    | text   | Full issue details.                 |
+| `address_line_1` | text   | Street address Line 1.              |
+| `address_line_2` | text   | Street address Line 2.              |
+| `city`           | text   | City.                               |
+| `state`          | text   | State.                              |
+| `pincode`        | text   | Pincode.                            |
+| `images`         | text[] | Array of **Supabase Storage URLs**. |
+| `status`         | text   | 'pending_analysis' or 'processed'.  |
 
 ## 3. `processed_complaints` (Layer 2)
 
@@ -64,6 +68,11 @@ Stores AI-enriched data and Admin status. Linked 1:1 with `raw_complaints`.
 | :----------------- | :------ | :----------------------------------------------- |
 | `id`               | uuid    | PK, FK references `raw_complaints.id`.           |
 | `user_id`          | uuid    | FK to `citizens.id`.                             |
+| `address_line_1`   | text    | Copied from raw.                                 |
+| `address_line_2`   | text    | Copied from raw.                                 |
+| `city`             | text    | Copied from raw.                                 |
+| `state`            | text    | Copied from raw.                                 |
+| `pincode`          | text    | Copied from raw.                                 |
 | `priority_score`   | float   | AI assigned score (0-10).                        |
 | `admin_visible`    | boolean | True if AI approves visibility.                  |
 | `complaint_status` | text    | 'submitted', 'verified', 'resolved', 'rejected'. |
