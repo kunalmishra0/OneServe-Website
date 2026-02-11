@@ -53,8 +53,12 @@ export default function LoginPage() {
           );
         }
 
-        // Success: Redirect to Dashboard
-        navigate("/dashboard");
+        // Success: Redirect based on role
+        if (profile.role === "admin") {
+          navigate("/admin");
+        } else {
+          navigate("/dashboard");
+        }
       }
     } catch (err: any) {
       console.error("Login failed:", err);

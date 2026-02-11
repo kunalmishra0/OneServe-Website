@@ -9,7 +9,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ userName, onMenuToggle }: TopBarProps) {
-  const { signOut } = useAuth(); // Get signOut function
+  const { signOut, isAdmin } = useAuth(); // Get signOut function
   const [notificationCount, setNotificationCount] = useState(3);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false); // New state
@@ -46,7 +46,7 @@ export function TopBar({ userName, onMenuToggle }: TopBarProps) {
     };
   }, []);
 
-  const notifications = [
+  const citizenNotifications = [
     {
       id: 1,
       title: "Complaint #203 Verified",
@@ -61,6 +61,29 @@ export function TopBar({ userName, onMenuToggle }: TopBarProps) {
       unread: true,
     },
   ];
+
+  const adminNotifications = [
+    {
+      id: 1,
+      title: "New High Priority Complaint",
+      time: "5 min ago",
+      unread: true,
+    },
+    {
+      id: 2,
+      title: "System Update Scheduled",
+      time: "2 hours ago",
+      unread: false,
+    },
+    {
+      id: 3,
+      title: "3 Complaints Pending Review",
+      time: "4 hours ago",
+      unread: true,
+    },
+  ];
+
+  const notifications = isAdmin ? adminNotifications : citizenNotifications;
 
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 shadow-sm transition-colors duration-200">
@@ -194,7 +217,7 @@ export function TopBar({ userName, onMenuToggle }: TopBarProps) {
                   {userName}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Citizen
+                  {isAdmin ? "Admin" : "Citizen"}
                 </p>
               </div>
             </button>

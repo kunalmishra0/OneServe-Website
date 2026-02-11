@@ -16,6 +16,7 @@ import { GamificationHub } from "@/app/components/modules/GamificationHub";
 import { NotificationsPage } from "@/app/components/modules/NotificationsPage";
 import { AIAssistant } from "@/app/components/modules/AIAssistant";
 import { Feedback } from "@/app/components/modules/Feedback";
+import { AdminDashboard } from "@/app/components/modules/AdminDashboard";
 import LoginPage from "@/app/pages/auth/LoginPage";
 import SignupPage from "@/app/pages/auth/SignupPage";
 import SettingsPage from "@/app/pages/SettingsPage";
@@ -126,6 +127,7 @@ export default function App() {
             <Route path="settings" element={<SettingsPage />} />{" "}
             {/* Replaced Settings with SettingsPage */}
             <Route path="feedback" element={<Feedback />} />
+            <Route path="admin" element={<AdminDashboard />} />
           </Route>
         </Routes>
       </BrowserRouter>

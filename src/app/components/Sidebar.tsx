@@ -10,7 +10,7 @@ import {
   Settings,
   MessageCircle,
   LogOut,
-  X,
+  ShieldCheck,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -42,7 +42,15 @@ const navItems = [
 ];
 
 export function Sidebar({ isOpen, onToggle }: SidebarProps) {
-  const { signOut } = useAuth();
+  const { signOut, isAdmin } = useAuth();
+
+  // Dynamic nav items based on role
+  const displayNavItems = isAdmin
+    ? [
+        { path: "/admin", label: "Admin Dashboard", icon: ShieldCheck },
+        { path: "/settings", label: "Settings", icon: Settings },
+      ]
+    : navItems;
 
   return (
     <>
@@ -92,7 +100,7 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
           {/* Navigation items */}
           <nav className="flex-1 overflow-y-auto py-4">
             <ul className="space-y-1 px-3">
-              {navItems.map((item) => {
+              {displayNavItems.map((item) => {
                 const Icon = item.icon;
 
                 return (

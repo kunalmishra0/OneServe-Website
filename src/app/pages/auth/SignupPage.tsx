@@ -68,7 +68,11 @@ export default function SignupPage() {
         }
 
         // Success!
-        navigate("/dashboard");
+        if (role === "admin") {
+          navigate("/admin");
+        } else {
+          navigate("/dashboard");
+        }
       }
     } catch (err: any) {
       console.error("Signup error:", err);
