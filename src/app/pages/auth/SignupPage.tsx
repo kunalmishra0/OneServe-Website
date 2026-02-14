@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { Loader2, ArrowRight, ShieldCheck, User } from "lucide-react";
+import { Loader2, ArrowRight, User } from "lucide-react";
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const [role, setRole] = useState<"citizen" | "admin">("citizen");
+  const [role] = useState<"citizen">("citizen");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,9 +68,7 @@ export default function SignupPage() {
         }
 
         // Success!
-        if (role === "admin") {
-          navigate("/admin");
-        } else {
+        if (role === "citizen") {
           navigate("/dashboard");
         }
       }
@@ -102,7 +100,7 @@ export default function SignupPage() {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
         <div className="bg-emerald-600 p-8 text-center text-white">
           <div className="mb-4 flex justify-center">
-            {role === "admin" ? <ShieldCheck size={48} /> : <User size={48} />}
+            <User size={48} />
           </div>
           <h1 className="text-3xl font-bold mb-2">Join OneServe</h1>
           <p className="opacity-90">Create your account today</p>
@@ -110,38 +108,8 @@ export default function SignupPage() {
 
         <div className="p-8">
           <form onSubmit={handleSignup} className="space-y-5">
-            {/* Role Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                I am a...
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setRole("citizen")}
-                  className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-all ${
-                    role === "citizen"
-                      ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-semibold"
-                      : "border-gray-200 text-gray-500 hover:border-emerald-300"
-                  }`}
-                >
-                  <User size={18} />
-                  Citizen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("admin")}
-                  className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-all ${
-                    role === "admin"
-                      ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-semibold"
-                      : "border-gray-200 text-gray-500 hover:border-emerald-300"
-                  }`}
-                >
-                  <ShieldCheck size={18} />
-                  Admin
-                </button>
-              </div>
-            </div>
+            {/* Role Selection - REMOVED (Citizens only) */}
+            <input type="hidden" name="role" value="citizen" />
 
             {/* Name Input */}
             <div>
