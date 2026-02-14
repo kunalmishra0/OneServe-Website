@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { MapPin, X, Search, Clock, CheckCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { ManpowerModal } from "./ManpowerModal";
 
 interface Complaint {
   id: string;
@@ -24,6 +25,7 @@ export function AdminDashboard() {
     null,
   );
   const [updateLoading, setUpdateLoading] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -120,7 +122,10 @@ export function AdminDashboard() {
   const filteredComplaints = complaints.filter((c) => {
     const matchesSearch =
       c.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchQuery.toLowerCase());
+      c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.location &&
+        c.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (c.city && c.city.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesStatus = statusFilter === "all" || c.status === statusFilter;
 
@@ -222,15 +227,6 @@ export function AdminDashboard() {
             <p className="text-gray-500">
               Overview of civic complaints and resolution status
             </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden md:block">
-              <p className="text-sm font-semibold text-gray-900">Admin User</p>
-              <p className="text-xs text-gray-500">Department Head</p>
-            </div>
-            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold">
-              AD
-            </div>
           </div>
         </div>
 
@@ -590,9 +586,49 @@ export function AdminDashboard() {
                 >
                   Close
                 </button>
+                <button
+                  onClick={() => setShowAssignModal(true)}
+                  className="px-4 py-2 border border-transparent bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                >
+                  Assign Work
+                </button>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Assign Work Modal */}
+        {showAssignModal && selectedComplaint && (
+          <ManpowerModal
+            complaint={selectedComplaint}
+            onClose={() => setShowAssignModal(false)}
+            onAssign={async (staffId) => {
+              // TODO: Implement assignment logic (update staff availability, log activity, etc.)
+              // Just demo closing for now
+              console.log("Assigned to:", staffId);
+
+              try {
+                // 1. Update Staff Status
+                await supabase
+                  .from("staff")
+                  .update({
+                    status: "busy",
+                    current_assignment_id: selectedComplaint.id,
+                  })
+                  .eq("id", staffId);
+
+                // 2. Update Complaint Log / Status (optional)
+                await handleStatusUpdate("in_progress");
+
+                // alert("Work Assigned Successfully!"); -> Removed, handled by ManpowerModal
+                // setShowAssignModal(false); -> Logic moved to ManpowerModal close button
+                // setSelectedComplaint(null); -> Logic moved to ManpowerModal close button
+              } catch (err) {
+                console.error(err);
+                alert("Failed to assign.");
+              }
+            }}
+          />
         )}
       </div>
     </div>

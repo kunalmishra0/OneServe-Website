@@ -11,8 +11,9 @@ import {
   MessageCircle,
   LogOut,
   ShieldCheck,
+  Newspaper,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
 interface SidebarProps {
@@ -43,14 +44,28 @@ const navItems = [
 
 export function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const { signOut, isAdmin } = useAuth();
+  const navigate = useNavigate();
 
   // Dynamic nav items based on role
   const displayNavItems = isAdmin
     ? [
         { path: "/admin", label: "Admin Dashboard", icon: ShieldCheck },
-        { path: "/settings", label: "Settings", icon: Settings },
+        { path: "/admin-settings", label: "Admin Settings", icon: Settings },
       ]
-    : navItems;
+    : [
+        ...navItems.slice(0, 5),
+        { path: "/schemes", label: "Govt. Schemes", icon: Newspaper },
+        ...navItems.slice(5),
+      ];
+
+  const handleLogoClick = () => {
+    if (isAdmin) {
+      navigate("/admin");
+    } else {
+      navigate("/dashboard");
+    }
+    if (window.innerWidth < 1024 && isOpen) onToggle();
+  };
 
   return (
     <>
@@ -74,7 +89,10 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
         <div className="flex flex-col h-full bg-white dark:bg-slate-900 transition-colors">
           {/* Sidebar header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-3">
+            <div
+              className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={handleLogoClick}
+            >
               <div className="bg-blue-600 p-2 rounded-lg">
                 <svg
                   className="h-6 w-6 text-white"

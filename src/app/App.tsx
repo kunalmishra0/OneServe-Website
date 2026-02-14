@@ -20,6 +20,8 @@ import { AdminDashboard } from "@/app/components/modules/AdminDashboard";
 import LoginPage from "@/app/pages/auth/LoginPage";
 import SignupPage from "@/app/pages/auth/SignupPage";
 import SettingsPage from "@/app/pages/SettingsPage";
+import { AdminSettings } from "@/app/pages/admin/AdminSettings";
+import { SchemesPage } from "@/app/pages/SchemesPage";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
@@ -126,8 +128,10 @@ export default function App() {
             <Route path="ai-assistant" element={<AIAssistant />} />
             <Route path="settings" element={<SettingsPage />} />{" "}
             {/* Replaced Settings with SettingsPage */}
+            <Route path="admin-settings" element={<AdminSettings />} />
             <Route path="feedback" element={<Feedback />} />
             <Route path="admin" element={<AdminDashboard />} />
+            <Route path="schemes" element={<SchemesPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

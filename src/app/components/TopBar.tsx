@@ -98,7 +98,10 @@ export function TopBar({ userName, onMenuToggle }: TopBarProps) {
             <Menu className="h-6 w-6" />
           </button>
 
-          <Link to="/dashboard" className="flex items-center gap-3 group">
+          <Link
+            to={isAdmin ? "/admin" : "/dashboard"}
+            className="flex items-center gap-3 group"
+          >
             <div className="bg-blue-600 p-2 rounded-lg group-hover:bg-blue-700 transition-colors">
               <svg
                 className="h-8 w-8 text-white"
@@ -226,7 +229,7 @@ export function TopBar({ userName, onMenuToggle }: TopBarProps) {
             {showProfileMenu && (
               <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden py-1 animate-in fade-in zoom-in duration-200">
                 <Link
-                  to="/settings"
+                  to={isAdmin ? "/admin-settings" : "/settings"}
                   onClick={() => setShowProfileMenu(false)}
                   className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 border-b border-gray-50 dark:border-gray-700"
                 >
