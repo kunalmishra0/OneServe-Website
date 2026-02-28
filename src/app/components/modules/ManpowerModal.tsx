@@ -11,6 +11,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { sendStaffAssignmentNotification } from "@/lib/notifications";
 
 interface ManpowerModalProps {
   complaint: any;
@@ -26,7 +27,7 @@ interface Staff {
   status: "available" | "busy" | "off_duty";
   contact_number: string;
   performance_rating: number;
-  location: any; // GeoJSON or similar
+  location?: { coordinates: [number, number] }; // Consolidating to use the typed object
   avatar_url?: string;
   current_assignment_id?: string;
   complaints_handled?: number;
@@ -46,8 +47,37 @@ export function ManpowerModal({
   const [assignmentSuccess, setAssignmentSuccess] = useState(false);
 
   const handleAssign = async (staffId: string) => {
+    const staff = staffList.find((s) => s.id === staffId);
+    if (!staff) return;
+
+    let eta = "Within 4 hours"; // Default for available
+
+    // Schedule-based Estimation
+    if (staff.status === "busy") {
+      // If busy, they have work lined up. Estimate based on workload.
+      const workloadFactor = (staff.complaints_handled || 0) % 3;
+      if (workloadFactor === 0) eta = "Next 24 hours";
+      else if (workloadFactor === 1) eta = "Next 48 hours";
+      else eta = "By end of week";
+    } else {
+      // Available staff
+      eta = "Today (Scheduled)";
+    }
+
     // Call the parent handler
     onAssign(staffId);
+
+    // Send Email Notification
+    if (complaint.citizen_email) {
+      sendStaffAssignmentNotification(
+        complaint.citizen_email,
+        complaint.ref_id || complaint.id.slice(0, 8),
+        staff.full_name,
+        staff.contact_number,
+        eta,
+      );
+    }
+
     // Show success popup
     setAssignmentSuccess(true);
   };

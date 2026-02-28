@@ -67,9 +67,9 @@ export default function SignupPage() {
           }
         }
 
-        // Success!
+        // Success! Redirect to Verification
         if (role === "citizen") {
-          navigate("/dashboard");
+          navigate("/verify", { state: { email } });
         }
       }
     } catch (err: any) {

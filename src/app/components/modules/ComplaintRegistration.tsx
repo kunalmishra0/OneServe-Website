@@ -11,6 +11,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import { SearchableDropdown } from "@/app/components/ui/SearchableDropdown";
+import { sendComplaintConfirmation } from "@/lib/notifications";
 
 // Simplified Indian States and Cities mapping for demo
 // In a real app, this could come from the DB or an API
@@ -58,6 +59,7 @@ export function ComplaintRegistration() {
   const [loading, setLoading] = useState(false);
   const [analyzingImage, setAnalyzingImage] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [submittedRefId, setSubmittedRefId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Available cities based on selected state
@@ -217,6 +219,13 @@ export function ComplaintRegistration() {
       }
 
       const complaintId = rawData.id;
+      const refId = rawData.ref_id;
+      setSubmittedRefId(refId);
+
+      // Send Confirmation Email
+      if (user.email) {
+        sendComplaintConfirmation(user.email, refId, formData.category);
+      }
       let imageUrls: string[] = [];
 
       // 2. Upload Images to Supabase Storage (Production Level)
@@ -347,7 +356,7 @@ export function ComplaintRegistration() {
           </div>
           <div>
             <p className="text-sm text-green-900 font-medium">
-              Complaint Submitted (Ref ID: Generated)
+              Complaint Submitted (Ref ID: {submittedRefId || "Generating..."})
             </p>
             <p className="text-sm text-green-700">
               AI is analyzing your complaint... Check 'Track Complaints' for

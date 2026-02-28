@@ -6,6 +6,7 @@ import { ManpowerModal } from "./ManpowerModal";
 
 interface Complaint {
   id: string;
+  ref_id?: string;
   description: string;
   category: string;
   status: "submitted" | "analyzing" | "verified" | "resolved" | "rejected";
@@ -15,6 +16,8 @@ interface Complaint {
   images?: string[];
   address_line_1?: string;
   city?: string;
+  citizen_email?: string;
+  location_coords?: [number, number]; // [lon, lat] for ETA
 }
 
 export function AdminDashboard() {
@@ -41,10 +44,10 @@ export function AdminDashboard() {
     try {
       setLoading(true);
 
-      // Fetch Raw Complaints
+      // Fetch Raw Complaints with Citizen Info and GeoLocation
       const { data: rawData, error: rawError } = await supabase
         .from("raw_complaints")
-        .select("*")
+        .select("*, citizens(email)")
         .order("created_at", { ascending: false });
 
       if (rawError) throw rawError;
@@ -76,15 +79,18 @@ export function AdminDashboard() {
 
         return {
           id: raw.id,
+          ref_id: raw.ref_id,
           description: raw.description,
           category: raw.category,
           status: processed?.complaint_status || "analyzing",
           created_at: raw.created_at,
           priority_score: processed?.priority_score || 0,
           location: locationStr,
+          location_coords: raw.location?.coordinates,
           images: raw.images,
           address_line_1: raw.address_line_1,
           city: raw.city,
+          citizen_email: (raw.citizens as any)?.email,
         };
       });
 
@@ -101,6 +107,30 @@ export function AdminDashboard() {
     pending: complaints.filter((c) =>
       ["submitted", "analyzing", "pending_analysis"].includes(c.status),
     ).length,
+    pendingByCat: (() => {
+      const pending = complaints.filter((c) =>
+        ["submitted", "analyzing", "pending_analysis"].includes(c.status),
+      );
+      const catMap: Record<string, number> = {};
+      pending.forEach((c) => {
+        const mapping: Record<string, string> = {
+          Sanitation: "SNT",
+          "Road Maintenance": "ROD",
+          "Water Supply": "WTR",
+          Electricity: "ELE",
+          Drainage: "DRN",
+          "Street Lights": "LGT",
+          "Parks & Gardens": "PRK",
+          Traffic: "TRF",
+          Others: "GRB",
+        };
+        const short = mapping[c.category] || "GRB";
+        catMap[short] = (catMap[short] || 0) + 1;
+      });
+      return Object.entries(catMap)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(" | ");
+    })(),
     resolvedToday: complaints.filter((c) => {
       const isResolved = c.status === "resolved";
       const isToday =
@@ -239,6 +269,9 @@ export function AdminDashboard() {
               </p>
               <p className="text-3xl font-bold text-gray-900">
                 {stats.pending}
+              </p>
+              <p className="text-[10px] text-gray-400 mt-1 font-mono uppercase tracking-tight">
+                {stats.pendingByCat}
               </p>
             </div>
             <div className="h-12 w-12 bg-yellow-50 rounded-lg flex items-center justify-center text-yellow-600">
@@ -383,7 +416,7 @@ export function AdminDashboard() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-mono text-xs text-gray-500">
-                            #{complaint.id.slice(0, 8)}
+                            #{complaint.ref_id || complaint.id.slice(0, 8)}
                           </span>
                           <span className="text-xs text-gray-400 mt-1">
                             {new Date(
