@@ -13,6 +13,13 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 -- Add ref_id column to raw_complaints
 ALTER TABLE raw_complaints ADD COLUMN IF NOT EXISTS ref_id TEXT UNIQUE;
 
+-- Allow Admins to view Citizen emails (for notifications)
+DROP POLICY IF EXISTS "Admins can view all citizens" ON citizens;
+CREATE POLICY "Admins can view all citizens" ON citizens
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (role = 'admin' OR email LIKE '%admin%'))
+  );
+
 -- Function to generate the Prefix based on Category
 CREATE OR REPLACE FUNCTION get_complaint_prefix(cat TEXT) 
 RETURNS TEXT AS $$

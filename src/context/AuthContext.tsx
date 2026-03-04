@@ -35,22 +35,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const user = session?.user ?? null;
 
   useEffect(() => {
+    console.log("AuthContext: Starting initial session check...");
+    const timeoutId = setTimeout(() => {
+      console.warn("AuthContext: Session check timeout reached.");
+      setIsLoading(false);
+    }, 5000);
+
     // 1. Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error("Error getting session:", error);
-      }
-      setSession(session);
-      // If no user, we are done loading. If there is a user, the profile effect will handle loading state.
-      if (!session?.user) {
+    supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
+        clearTimeout(timeoutId);
+        console.log(
+          "AuthContext: getSession finished. User exists:",
+          !!session?.user,
+        );
+        if (error) {
+          console.error("Error getting session:", error);
+        }
+        setSession(session);
+        // If no user, we are done loading. If there is a user, the profile effect will handle loading state.
+        if (!session?.user) {
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        clearTimeout(timeoutId);
+        console.error("AuthContext: getSession threw an error:", err);
         setIsLoading(false);
-      }
-    });
+      });
 
     // 2. Listen for changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("AuthContext: onAuthStateChange:", _event);
       setSession(session);
       if (!session?.user) {
         setProfile(null);
@@ -58,7 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      subscription.unsubscribe();
+    };
   }, []);
 
   // 3. Dedicated effect for fetching profile when user changes

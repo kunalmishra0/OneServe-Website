@@ -22,6 +22,7 @@ interface Complaint {
   location: string;
   images?: string[];
   admin_visible?: boolean;
+  ref_id?: string;
 }
 
 export function ComplaintTracking() {
@@ -121,6 +122,7 @@ export function ComplaintTracking() {
 
             enrichedComplaints.push({
               id: raw.id,
+              ref_id: raw.ref_id,
               description: raw.description, // or processed.description
               category: raw.category,
               location: locationStr,
@@ -144,6 +146,7 @@ export function ComplaintTracking() {
 
               return {
                 id: r.id,
+                ref_id: r.ref_id,
                 description: r.description,
                 category: r.category,
                 location: locationStr,
@@ -204,7 +207,9 @@ export function ComplaintTracking() {
     const matchesSearch =
       complaint.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       complaint.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      complaint.id.toLowerCase().includes(searchQuery.toLowerCase());
+      complaint.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (complaint.ref_id &&
+        complaint.ref_id.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesFilter =
       filterStatus === "all" || complaint.status === filterStatus;
     return matchesSearch && matchesFilter;
@@ -314,10 +319,10 @@ export function ComplaintTracking() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <span
-                        className="font-mono text-xs font-semibold text-gray-500"
+                        className="font-mono text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded"
                         title={complaint.id}
                       >
-                        Search ID: #{complaint.id.slice(0, 8)}
+                        REF: #{complaint.ref_id || complaint.id.slice(0, 8)}
                       </span>
                     </div>
                     <h3 className="font-semibold text-gray-800 mb-2">
@@ -378,10 +383,10 @@ export function ComplaintTracking() {
               <div className="flex flex-wrap gap-4 justify-between items-start bg-gray-50 p-4 rounded-lg">
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">
-                    Complaint ID
+                    Reference ID
                   </p>
-                  <p className="font-mono text-sm text-gray-700">
-                    #{selectedComplaint.id}
+                  <p className="font-mono text-base font-bold text-emerald-600">
+                    {selectedComplaint.ref_id || selectedComplaint.id}
                   </p>
                 </div>
                 <div
