@@ -35,9 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const user = session?.user ?? null;
 
   useEffect(() => {
-    console.log("AuthContext: Starting initial session check...");
     const timeoutId = setTimeout(() => {
-      console.warn("AuthContext: Session check timeout reached.");
       setIsLoading(false);
     }, 5000);
 
@@ -46,10 +44,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .getSession()
       .then(({ data: { session }, error }) => {
         clearTimeout(timeoutId);
-        console.log(
-          "AuthContext: getSession finished. User exists:",
-          !!session?.user,
-        );
         if (error) {
           console.error("Error getting session:", error);
         }
@@ -61,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((err) => {
         clearTimeout(timeoutId);
-        console.error("AuthContext: getSession threw an error:", err);
+        console.error("AuthContext: getSession error:", err);
         setIsLoading(false);
       });
 
@@ -69,7 +63,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log("AuthContext: onAuthStateChange:", _event);
       setSession(session);
       if (!session?.user) {
         setProfile(null);
@@ -96,10 +89,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
           console.error("Error fetching profile:", error);
-          // If profile is not found (e.g. 406 or explicit empty), it means the user was deleted from DB but session persists.
-          // We should force sign out.
           if (error.code === "PGRST116" || error.message.includes("JSON")) {
-            console.warn("User profile not found. Forcing sign out.");
+            // Profile not found — auto-create using user metadata
+            const currentUser = session?.user;
+            if (currentUser) {
+              const userMeta = currentUser.user_metadata;
+              const autoRole = userMeta?.role || "citizen";
+              const autoName = userMeta?.full_name || "User";
+
+              const { error: createError } = await supabase
+                .from("profiles")
+                .upsert({
+                  id: currentUser.id,
+                  email: currentUser.email,
+                  role: autoRole,
+                });
+
+              if (!createError) {
+                // Also create citizen entry if applicable
+                if (autoRole === "citizen") {
+                  await supabase.from("citizens").upsert({
+                    id: currentUser.id,
+                    full_name: autoName,
+                    email: currentUser.email,
+                  });
+                }
+                // Re-fetch the newly created profile
+                const { data: newData } = await supabase
+                  .from("profiles")
+                  .select("*")
+                  .eq("id", currentUser.id)
+                  .single();
+                if (newData) {
+                  setProfile(newData as UserProfile);
+                  return;
+                }
+              }
+            }
+            // If auto-create failed, sign out as last resort
             await supabase.auth.signOut();
             setSession(null);
             setProfile(null);
@@ -125,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     }
-  }, [user, profile]); // Dependency on user ensures this runs when session updates
+  }, [user?.id]); // Only re-run when user ID changes
 
   const signOut = async () => {
     await supabase.auth.signOut();

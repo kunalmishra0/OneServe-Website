@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { verifyOTP, generateOTP, sendAndStoreOTP } from "@/lib/otp";
 import { Loader2, ArrowRight, ShieldCheck, Mail } from "lucide-react";
 
 export default function VerifyPage() {
@@ -8,30 +9,44 @@ export default function VerifyPage() {
   const location = useLocation();
   const [otp, setOtp] = useState("");
   const [email, setEmail] = useState("");
+  const [emailInput, setEmailInput] = useState(""); // For manual email entry
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
 
+  // Get email from navigation state
   useEffect(() => {
-    // Try to get email from navigation state
-    const state = location.state as { email?: string };
+    const state = location.state as {
+      email?: string;
+      fullName?: string;
+      role?: string;
+      userId?: string;
+    };
     if (state?.email) {
       setEmail(state.email);
-    } else {
-      // If no email, check if user is already logged in but not verified
-      const getUser = async () => {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user?.email) setEmail(user.email);
-      };
-      getUser();
     }
   }, [location]);
 
+  // Resend cooldown timer
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
+    const targetEmail = email || emailInput;
+
+    if (!targetEmail) {
+      setError("Please enter your email address.");
+      return;
+    }
+
     if (otp.length < 6) {
       setError("Please enter a valid 6-digit code.");
       return;
@@ -41,47 +56,126 @@ export default function VerifyPage() {
     setError(null);
 
     try {
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
-        type: "signup",
+      // 1. Verify OTP against our custom otp_codes table
+      const result = await verifyOTP(targetEmail, otp);
+
+      if (!result.valid) {
+        throw new Error(
+          result.error || "Invalid or expired code. Please try again.",
+        );
+      }
+
+      // 2. Sign in the user with their credentials
+      // The user was already created during signup, so we need to get the session.
+      // Try to get the current session first
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      let user = session?.user;
+
+      if (!user) {
+        // No active session — session expired between signup and verification.
+        // Try to create profile using data passed from signup page (navigation state),
+        // so when they login, the profile already exists.
+        const state = location.state as {
+          fullName?: string;
+          role?: string;
+          userId?: string;
+        };
+
+        if (state?.userId) {
+          // Attempt profile creation with the userId from signup
+          const autoRole = state.role || "citizen";
+          const autoName = state.fullName || "User";
+
+          await supabase.from("profiles").upsert({
+            id: state.userId,
+            email: targetEmail,
+            role: autoRole,
+          });
+
+          if (autoRole === "citizen") {
+            await supabase.from("citizens").upsert({
+              id: state.userId,
+              full_name: autoName,
+              email: targetEmail,
+            });
+          }
+        }
+
+        setError(
+          "Verification successful! Please sign in with your credentials.",
+        );
+        setLoading(false);
+        setTimeout(() => navigate("/login"), 2000);
+        return;
+      }
+
+      // 3. Post-Verification: Create Profile & Citizen entries
+      const fullName =
+        (location.state as any)?.fullName ||
+        user.user_metadata?.full_name ||
+        "User";
+      const role =
+        (location.state as any)?.role || user.user_metadata?.role || "citizen";
+
+      // Upsert Profile
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: user.id,
+        email: user.email,
+        role: role,
       });
 
-      if (verifyError) throw verifyError;
+      if (profileError) {
+        console.error("Profile creation error:", profileError);
+        // Non-blocking — continue to dashboard
+      }
 
-      // Success - Redirect to dashboard
+      // Upsert Citizen if applicable
+      if (role === "citizen") {
+        const { error: citizenError } = await supabase.from("citizens").upsert({
+          id: user.id,
+          full_name: fullName,
+          email: user.email,
+        });
+
+        if (citizenError) {
+          console.error("Citizen profile creation error:", citizenError);
+        }
+      }
+
+      // 4. Success — navigate to dashboard
       navigate("/dashboard");
     } catch (err: any) {
-      console.error("Verification error:", err);
-      setError(err.message || "Invalid or expired code. Please try again.");
+      setError(err.message || "Verification failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    const targetEmail = email || emailInput;
+    if (!targetEmail) {
+      setError("Please enter your email address to resend the code.");
+      return;
+    }
+
     setResending(true);
     setResendStatus(null);
+    setError(null);
+
     try {
-      // Note: signup with existing email triggers a resend in many Supabase configs
-      // Or use supabase.auth.resend({ type: 'signup', email })
-      await supabase.auth.signUp({
-        email,
-        password: "dummy_password_not_needed_for_resend_trigger", // In real flow, we'd use resendOtp if available for email
-        options: {
-          emailRedirectTo: window.location.origin,
-        },
-      });
-      // Note: signup with existing email triggers a resend in many Supabase configs
-      // Or use supabase.auth.resend({ type: 'signup', email })
-      const { error: actualResendError } = await supabase.auth.resend({
-        type: "signup",
-        email: email,
-      });
+      // Generate new OTP and send via server-side Supabase function
+      const otpCode = generateOTP();
 
-      if (actualResendError) throw actualResendError;
+      const result = await sendAndStoreOTP(targetEmail, otpCode);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to send verification code.");
+      }
 
-      setResendStatus("A new code has been sent to your email.");
+      setResendStatus("A new 6-digit code has been sent to your email.");
+      setCooldown(60); // 60-second cooldown
     } catch (err: any) {
       setError(err.message || "Failed to resend code.");
     } finally {
@@ -115,6 +209,23 @@ export default function VerifyPage() {
           </div>
 
           <form onSubmit={handleVerify} className="space-y-6">
+            {/* Email input if not from state */}
+            {!email && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="Enter your registered email"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none"
+                />
+              </div>
+            )}
+
             <div>
               <input
                 type="text"
@@ -160,11 +271,13 @@ export default function VerifyPage() {
             </p>
             <button
               onClick={handleResend}
-              disabled={resending}
+              disabled={resending || cooldown > 0}
               className="text-emerald-600 hover:text-emerald-800 font-semibold text-sm hover:underline flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
             >
               {resending ? (
                 <Loader2 className="animate-spin" size={14} />
+              ) : cooldown > 0 ? (
+                `Resend in ${cooldown}s`
               ) : (
                 "Resend Code"
               )}

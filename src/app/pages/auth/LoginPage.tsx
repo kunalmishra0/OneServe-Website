@@ -29,32 +29,67 @@ export default function LoginPage() {
       if (authError) throw authError;
 
       if (authData.user) {
-        // 2. Authorization Check: Verify Profile & Role
-        const { data: profile, error: profileError } = await supabase
+        // 2. Fetch or create the user's profile
+        let { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", authData.user.id)
           .single();
 
+        const userMeta = authData.user.user_metadata;
+        const metaRole = userMeta?.role || "citizen";
+        const metaName = userMeta?.full_name || "User";
+
         if (profileError || !profile) {
-          // Profile missing (e.g., deleted user but still in auth)
-          console.error("Profile fetch error:", profileError);
+          // Profile missing — auto-create using metadata stored during signup
+          const { error: createError } = await supabase
+            .from("profiles")
+            .upsert({
+              id: authData.user.id,
+              email: authData.user.email,
+              role: metaRole,
+            });
+
+          if (createError) {
+            console.error("Auto-create profile failed:", createError);
+            await supabase.auth.signOut();
+            throw new Error(
+              "Failed to set up your profile. Please try again or contact support.",
+            );
+          }
+
+          profile = { role: metaRole };
+        }
+
+        const actualRole = profile.role;
+
+        // 3. Ensure citizens entry exists for citizen accounts (prevents FK errors)
+        if (actualRole === "citizen") {
+          const { data: citizenExists } = await supabase
+            .from("citizens")
+            .select("id")
+            .eq("id", authData.user.id)
+            .single();
+
+          if (!citizenExists) {
+            await supabase.from("citizens").upsert({
+              id: authData.user.id,
+              full_name: metaName,
+              email: authData.user.email,
+            });
+          }
+        }
+
+        // 4. Verify the selected UI role matches their actual registered role
+        if (actualRole !== role) {
           await supabase.auth.signOut();
           throw new Error(
-            "Account integrity error: Profile missing. Please contact support.",
+            `This account is registered as a ${actualRole}. Please select "${actualRole}" above and try again.`,
           );
         }
 
-        if (profile.role !== role) {
-          // Role mismatch (e.g., citizen trying to login as admin)
-          await supabase.auth.signOut();
-          throw new Error(
-            `Unauthorized: This account is registered as a ${profile.role}, not ${role}.`,
-          );
-        }
-
-        // Success: Redirect based on role
-        if (profile.role === "admin") {
+        // 5. Success: Redirect based on role
+        if (actualRole === "admin") {
           navigate("/admin");
         } else {
           navigate("/dashboard");
@@ -125,10 +160,10 @@ export default function LoginPage() {
             {/* Email Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email or Phone
+                Email
               </label>
               <input
-                type="text" // Using text to allow potential phone formats visually, though backend expects email
+                type="email" // Backend only supports email auth
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
