@@ -9,6 +9,7 @@ import {
   Save,
   Loader2,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 import { SearchableDropdown } from "@/app/components/ui/SearchableDropdown";
 
@@ -40,6 +41,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -157,6 +160,32 @@ export default function SettingsPage() {
       setError(err.message || "Failed to update profile");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    setIsDeleteModalOpen(false); // Close modal on proceed
+    
+    try {
+      setIsDeletingAccount(true);
+      // Try calling RPC if it exists
+      const { error: rpcError } = await supabase.rpc("delete_user");
+      
+      if (rpcError) {
+        console.warn("RPC delete_user failed or not found, falling back to data deletion.", rpcError);
+        // Fallback: Delete citizen & profile data, then sign out
+        await supabase.from("raw_complaints").delete().eq("user_id", user.id);
+        await supabase.from("citizens").delete().eq("id", user.id);
+        await supabase.from("profiles").delete().eq("id", user.id);
+      }
+      
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (err: any) {
+      console.error("Error deleting account:", err);
+      setError(err.message || "Failed to delete account");
+      setIsDeletingAccount(false);
     }
   };
 
@@ -364,7 +393,60 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
+
+        {/* Danger Zone */}
+        <div className="p-6 border-t border-red-100 bg-red-50/50 mt-4">
+          <h3 className="text-lg font-semibold text-red-800 mb-2">Danger Zone</h3>
+          <p className="text-sm text-red-600 mb-4">
+            Once you delete your account, there is no going back. Please be certain.
+          </p>
+          <button
+            onClick={() => setIsDeleteModalOpen(true)}
+            disabled={isDeletingAccount}
+            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-70"
+          >
+            {isDeletingAccount ? (
+              <Loader2 className="animate-spin h-5 w-5" />
+            ) : (
+              <Trash2 className="h-5 w-5" />
+            )}
+            Delete Account
+          </button>
+        </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-sm w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="h-8 w-8 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                Delete Account?
+              </h3>
+              <p className="text-gray-600 text-sm mb-6">
+                Are you absolutely sure you want to delete your account? This action cannot be undone and will permanently erase all your data and complaints.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  Yes, Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

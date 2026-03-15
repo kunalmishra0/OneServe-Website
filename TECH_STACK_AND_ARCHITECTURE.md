@@ -20,6 +20,9 @@ This application is built with a modern, performant stack designed for scalabili
   - **PostGIS**: Geospatial extension for location queries (nearest worker, radius search).
   - **Storage**: S3-compatible object storage for complaint images.
   - **Auth**: Handling secure user signup/login (Email/Password).
+- **Custom Serverless Backend**: [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/).
+  - **Email Service (Nodemailer)**: Dedicated `/api/send-email` route built natively into Vercel Serverless Functions to handle secure, cloud-based SMTP transmissions without exposing credentials to the frontend.
+  - **Local Dev Server**: Configured `server.js` running concurrently for local active development.
 
 ---
 

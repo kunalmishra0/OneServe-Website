@@ -20,6 +20,7 @@ import { AdminDashboard } from "@/app/components/modules/AdminDashboard";
 import LoginPage from "@/app/pages/auth/LoginPage";
 import SignupPage from "@/app/pages/auth/SignupPage";
 import VerifyPage from "@/app/pages/auth/VerifyPage";
+import ForgotPasswordPage from "@/app/pages/auth/ForgotPasswordPage";
 import SettingsPage from "@/app/pages/SettingsPage";
 import { AdminSettings } from "@/app/pages/admin/AdminSettings";
 import { SchemesPage } from "@/app/pages/SchemesPage";
@@ -114,6 +115,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/verify" element={<VerifyPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
           <Route path="/" element={<ProtectedLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />

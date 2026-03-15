@@ -69,16 +69,24 @@ export async function sendAndStoreOTP(
         </div>
       `;
 
-      const { error: emailError } = await supabase.rpc("send_email", {
-        p_to: email,
-        p_subject: `${code} is your OneServe verification code`,
-        p_html: otpHtml,
-        p_from: "OneServe <onboarding@resend.dev>",
-        p_resend_key: resendKey,
+      const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
+      
+      const response = await fetch(`${API_URL}/api/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: email,
+          subject: `${code} is your OneServe verification code`,
+          html: otpHtml,
+        })
       });
 
-      if (emailError) {
-        console.error("OTP email send error:", emailError);
+      const data = await response.json();
+
+      if (!response.ok || (data && !data.success)) {
+        console.error("OTP email send error:", data.error || response.statusText);
         // Non-fatal: OTP is stored, user can check DB or resend
       }
     }

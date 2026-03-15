@@ -46,12 +46,19 @@ OneServe is a modern civic services platform designed to bridge the gap between 
   - Validated Indian phone number input.
   - Linked directly to `citizens` table.
 
-#### D. Dashboard
+#### D. Dashboards
 
-- **File**: `src/app/components/Dashboard.tsx`
+- **Files**: `src/app/components/Dashboard.tsx` (Citizen), `src/app/components/modules/AdminDashboard.tsx` (Admin)
 - **Features**:
-  - Aggregated stats (Active Complaints, Bills, Points).
-  - Quick access to core services.
+  - Citizen: Aggregated stats (Active Complaints, Bills, Points), quick access to core services.
+  - Admin: Full oversight of submitted complaints, analytics widgets, Manpower assignment module.
+
+#### E. Email System (Backend)
+
+- **Files**: `api/send-email.js`, `server.js`, `src/lib/otp.ts`, `src/lib/notifications.ts`
+- **Features**:
+  - Uses `nodemailer` to dispatch responsive HTML emails for OTP verification, staff assignments, and complaint receipts.
+  - Vercel Serverless Function `/api` route automatically used in Production. Local Express server handles `npm run dev` environments.
 
 ## Deployment & Setup
 
@@ -59,6 +66,7 @@ OneServe is a modern civic services platform designed to bridge the gap between 
 
 - Node.js 18+
 - Supabase Project (URL + Anon Key)
+- Gmail account (with App Password configured for Nodemailer)
 
 ### Installation
 
@@ -68,26 +76,29 @@ npm install
 
 ### Environment Variables
 
-Create `.env` file:
+Create `.env` file for local development or Vercel production:
 
 ```env
 VITE_SUPABASE_URL=your_project_url
 VITE_SUPABASE_KEY=your_anon_key
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASS=your_16_char_app_password
+VITE_API_URL=http://localhost:5000  # For local development only
 ```
 
 ### Running Locally
 
 ```bash
-npm run dev
+# This starts both Vite and the Express Email server concurrently
+npm run dev 
 ```
 
 ## Maintenance Notes
 
-- **Supabase Policies**: All tables (`profiles`, `citizens`, `raw_complaints`, `storage.objects`) have RLS enabled. Refer to `supabase_3layer_migration.sql` for the latest policy definitions.
+- **Supabase Policies**: Tables (`profiles`, `citizens`, `raw_complaints`, `storage.objects`) rely heavily on RLS. We leverage `SECURITY DEFINER` RPCs (e.g. `admin_update_complaint_status`, `citizen_delete_complaint`) to safely handle multi-table operations and bypass RLS correctly.
 - **Image Storage**: Ensure 'complaints' bucket is public and allows authenticated uploads.
 
 ## Known Limitations / Future Work
 
 - **Geolocation**: Currently simulated; requires integration with Google Maps API or OpenStreetMap.
 - **Payment Gateway**: Bill payment is UI-only demo; backend integration needed.
-- **Admin Panel**: Only Citizen view is fully implemented; Admin dashboard is next phase key deliverable.

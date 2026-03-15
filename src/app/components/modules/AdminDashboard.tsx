@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { MapPin, X, Search, Clock, CheckCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/context/AuthContext";
 import { ManpowerModal } from "./ManpowerModal";
 
 interface Complaint {
@@ -21,7 +20,6 @@ interface Complaint {
 }
 
 export function AdminDashboard() {
-  const { user } = useAuth();
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(
@@ -202,32 +200,17 @@ export function AdminDashboard() {
     if (!selectedComplaint) return;
     setUpdateLoading(true);
     try {
-      // 1. Check if record exists in processed_complaints
-      const { data: existing } = await supabase
-        .from("processed_complaints")
-        .select("id")
-        .eq("id", selectedComplaint.id)
-        .single();
+      // 1. Call Secure RPC to handle database updating cleanly and bypass RLS constraints
+      const { error } = await supabase.rpc("admin_update_complaint_status", {
+        p_complaint_id: selectedComplaint.id,
+        p_new_status: newStatus,
+      });
 
-      if (existing) {
-        await supabase
-          .from("processed_complaints")
-          .update({ complaint_status: newStatus })
-          .eq("id", selectedComplaint.id);
-      } else {
-        // Insert if missing (layer 2 logic)
-        await supabase.from("processed_complaints").insert({
-          id: selectedComplaint.id,
-          user_id: user?.id, // Admin takes ownership or just reference? Ideally original user_id but we might not have it here easily without fetching raw again.
-          // Actually we merged data so we don't have user_id in state properly.
-          // Let's just update raw_complaints status for now as backup or fetch raw to get user_id.
-          // Simplification: We assume processed exists since we fetch it. If not, we might error.
-          // For demo, let's just update raw_complaints status too to keep them in sync if needed.
-          complaint_status: newStatus,
-        });
+      if (error) {
+        throw new Error(error.message || "Failed to update complaint status");
       }
 
-      // Update local state
+      // 2. Update local state
       setComplaints((prev) =>
         prev.map((c) =>
           c.id === selectedComplaint.id
@@ -238,8 +221,9 @@ export function AdminDashboard() {
       setSelectedComplaint((prev) =>
         prev ? { ...prev, status: newStatus as any } : null,
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to update status", err);
+      alert(`Error updating status: ${err.message}`);
     } finally {
       setUpdateLoading(false);
     }
@@ -634,7 +618,12 @@ export function AdminDashboard() {
         {showAssignModal && selectedComplaint && (
           <ManpowerModal
             complaint={selectedComplaint}
-            onClose={() => setShowAssignModal(false)}
+            onClose={(success) => {
+              setShowAssignModal(false);
+              if (success) {
+                setSelectedComplaint(null);
+              }
+            }}
             onAssign={async (staffId) => {
               // TODO: Implement assignment logic (update staff availability, log activity, etc.)
               // Just demo closing for now

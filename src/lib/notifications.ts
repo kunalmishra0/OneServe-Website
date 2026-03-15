@@ -1,44 +1,37 @@
-// All emails are sent via a Supabase server-side function (send_email)
-// using pg_net to call the Resend API. This avoids CORS issues
-// and keeps the API key off the frontend.
-
-import { supabase } from "./supabase";
-
-const resendKey = import.meta.env.VITE_RESEND_API_KEY;
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 /**
- * Send an email via the server-side Supabase function.
- * Uses pg_net internally to call the Resend API.
+ * Send an email via the custom Node.js Nodemailer server.
  */
 const sendEmail = async (
   to: string,
   subject: string,
   html: string,
-  from?: string,
+  replyTo?: string,
 ) => {
-  if (!resendKey) {
-    console.warn("Resend API key missing. Skipping email.");
-    return;
-  }
-
   try {
-    const { data, error } = await supabase.rpc("send_email", {
-      p_to: to,
-      p_subject: subject,
-      p_html: html,
-      p_from: from || "OneServe <onboarding@resend.dev>",
-      p_resend_key: resendKey,
+    const response = await fetch(`${API_URL}/api/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to,
+        subject,
+        html,
+        replyTo,
+      })
     });
 
-    if (error) {
-      console.error("send_email RPC error:", error);
-    }
+    const data = await response.json();
 
-    if (data && data.success === false) {
-      console.error("Email send failed:", data.error);
+    if (!response.ok || (data && !data.success)) {
+      console.error("Email send failed w/ response:", data.error || response.statusText);
+    } else {
+      console.log("Email sent successfully!");
     }
   } catch (error) {
-    console.error("sendEmail unexpected error:", error);
+    console.error("sendEmail fetch error:", error);
   }
 };
 
@@ -76,6 +69,7 @@ export const sendStaffAssignmentNotification = async (
   staffName: string,
   staffContact: string,
   eta: string,
+  staffRole?: string
 ) => {
   await sendEmail(
     email,
@@ -91,11 +85,12 @@ export const sendStaffAssignmentNotification = async (
         
         <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
           <p style="margin: 0;"><strong>Staff Name:</strong> ${staffName}</p>
+          <p style="margin: 5px 0;"><strong>Role/Type:</strong> ${staffRole || 'Field Agent'}</p>
           <p style="margin: 5px 0;"><strong>Contact:</strong> ${staffContact}</p>
           <p style="margin: 5px 0 0 0;"><strong>Estimated Arrival:</strong> ${eta}</p>
         </div>
         
-        <p>The staff member is on their way. Please ensure area accessibility.</p>
+        <p>You can contact the assigned staff member using the details above if you have any urgent queries. Our agent now has your location details and may reach out to you soon before arriving at your destination.</p>
         <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Best regards,<br/>The OneServe Team</p>
       </div>
     `,

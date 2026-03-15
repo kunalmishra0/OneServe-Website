@@ -8,6 +8,9 @@ import {
   XCircle,
   Loader2,
   MapPin,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
@@ -16,7 +19,7 @@ interface Complaint {
   id: string;
   description: string;
   category: string;
-  status: "submitted" | "analyzing" | "verified" | "resolved" | "rejected";
+  status: "submitted" | "analyzing" | "verified" | "in_progress" | "resolved" | "rejected";
   created_at: string;
   priority_score: number;
   location: string;
@@ -34,6 +37,11 @@ export function ComplaintTracking() {
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(
     null,
   );
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  
+  const [isProcessingExpanded, setIsProcessingExpanded] = useState(true);
+  const [isProcessedExpanded, setIsProcessedExpanded] = useState(true);
 
   const openModal = (complaint: Complaint) => setSelectedComplaint(complaint);
 
@@ -67,12 +75,14 @@ export function ComplaintTracking() {
 
   /* New: 3-Layer System Integration */
   const fetchComplaints = async () => {
+    if (!user) return;
     try {
       setLoading(true);
       // 1. Fetch Raw Complaints (Layer 1)
       const { data: rawData, error: rawError } = await supabase
         .from("raw_complaints")
         .select("*")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (rawError) {
@@ -85,6 +95,7 @@ export function ComplaintTracking() {
           const { data, error } = await supabase
             .from("complaints")
             .select("*")
+            .eq("user_id", user.id)
             .order("created_at", { ascending: false });
           if (error) throw error;
           setComplaints(data || []);
@@ -170,12 +181,44 @@ export function ComplaintTracking() {
     }
   };
 
+  const handleDeleteClick = (complaintId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteConfirmId(complaintId);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmId) return;
+
+    try {
+      setIsDeletingId(deleteConfirmId);
+      
+      // Use secure backend RPC to detach workers and safely delete the complaint
+      const { error } = await supabase.rpc("citizen_delete_complaint", {
+        p_complaint_id: deleteConfirmId,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to permanently delete complaint");
+      }
+      
+      setComplaints(complaints.filter(c => c.id !== deleteConfirmId));
+    } catch (err: any) {
+      console.error("Error deleting complaint:", err);
+      alert(`Error deleting complaint: ${err.message}`);
+    } finally {
+      setIsDeletingId(null);
+      setDeleteConfirmId(null);
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "submitted":
       case "analyzing":
       case "pending_analysis":
         return <Clock className="h-5 w-5 text-yellow-600" />;
+      case "in_progress":
+        return <AlertCircle className="h-5 w-5 text-purple-600" />;
       case "verified":
         return <AlertCircle className="h-5 w-5 text-blue-600" />;
       case "resolved":
@@ -192,6 +235,8 @@ export function ComplaintTracking() {
       case "submitted":
       case "analyzing":
         return "bg-yellow-100 text-yellow-800 border-yellow-300";
+      case "in_progress":
+        return "bg-purple-100 text-purple-800 border-purple-300";
       case "verified":
         return "bg-blue-100 text-blue-800 border-blue-300";
       case "resolved":
@@ -298,7 +343,7 @@ export function ComplaintTracking() {
         </div>
       </div>
       {/* Complaints list */}
-      <div className="space-y-4">
+      <div className="space-y-8">
         {filteredComplaints.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
             <p className="text-gray-500">No complaints found</p>
@@ -309,57 +354,172 @@ export function ComplaintTracking() {
             )}
           </div>
         ) : (
-          filteredComplaints.map((complaint) => {
-            return (
-              <div
-                key={complaint.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+          <div className="grid md:grid-cols-2 gap-8 items-start">
+            {/* Processing Column */}
+            <div className="space-y-4">
+              <button 
+                onClick={() => setIsProcessingExpanded(!isProcessingExpanded)}
+                className="w-full flex items-center justify-between text-xl font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4 sticky top-0 bg-gray-50/80 backdrop-blur z-10 p-2 rounded-t-lg hover:bg-gray-100 transition-colors"
               >
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span
-                        className="font-mono text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded"
-                        title={complaint.id}
-                      >
-                        REF: #{complaint.ref_id || complaint.id.slice(0, 8)}
-                      </span>
-                    </div>
-                    <h3 className="font-semibold text-gray-800 mb-2">
-                      {complaint.description}
-                    </h3>
+                <span>Processing Complaints</span>
+                {isProcessingExpanded ? <ChevronUp className="h-6 w-6 text-gray-500" /> : <ChevronDown className="h-6 w-6 text-gray-500" />}
+              </button>
+              
+              {isProcessingExpanded && (
+                <>
+                  {filteredComplaints
+                    .filter((c) => ["submitted", "analyzing", "pending_analysis", "in_progress"].includes(c.status))
+                    .map((complaint) => (
+                  <div
+                    key={complaint.id}
+                    className="bg-white rounded-xl shadow-sm border border-orange-100/50 p-6 hover:shadow-md transition-shadow relative overflow-hidden group"
+                  >
+                    <div className="absolute top-0 left-0 w-1 h-full bg-orange-400"></div>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span
+                              className="font-mono text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded"
+                              title={complaint.id}
+                            >
+                              REF: #{complaint.ref_id || complaint.id.slice(0, 8)}
+                            </span>
+                          </div>
+                          <h3 className="font-semibold text-gray-800 mb-2">
+                            {complaint.description}
+                          </h3>
+                        </div>
+                        <div
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${getStatusColor(complaint.status)} shrink-0`}
+                        >
+                          {getStatusIcon(complaint.status)}
+                          <span className="text-xs font-bold uppercase tracking-wider">
+                            {complaint.status === "in_progress" ? "Staff Assigned" : complaint.status}
+                          </span>
+                        </div>
+                      </div>
 
-                    <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                      <span>📋 {complaint.category}</span>
-                      <span>📍 {complaint.location || "No location"}</span>
-                      <span>
-                        📅{" "}
-                        {new Date(complaint.created_at).toLocaleDateString(
-                          "en-IN",
-                        )}
-                      </span>
+                      <div className="flex flex-wrap gap-3 text-xs text-gray-500 font-medium">
+                        <span className="bg-gray-100 px-2 py-1 rounded-md">📋 {complaint.category}</span>
+                        <span className="bg-gray-100 px-2 py-1 rounded-md">📍 {complaint.location || "No location"}</span>
+                        <span className="bg-gray-100 px-2 py-1 rounded-md">
+                          📅 {new Date(complaint.created_at).toLocaleDateString("en-IN")}
+                        </span>
+                      </div>
+
+                      <div className="pt-3 mt-1 border-t border-gray-100 flex items-center justify-between">
+                        <button
+                          onClick={() => openModal(complaint)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:underline px-2 py-1 -ml-2 rounded-md transition-colors"
+                        >
+                          View Details
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteClick(complaint.id, e)}
+                          disabled={isDeletingId === complaint.id}
+                          className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors disabled:opacity-50"
+                          title="Delete Complaint"
+                        >
+                          {isDeletingId === complaint.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => openModal(complaint)}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:underline"
-                    >
-                      View Details
-                    </button>
-                    <div
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${getStatusColor(complaint.status)}`}
-                    >
-                      {getStatusIcon(complaint.status)}
-                      <span className="text-sm font-semibold capitalize">
-                        {complaint.status}
-                      </span>
+                ))}
+              {filteredComplaints.filter((c) => ["submitted", "analyzing", "pending_analysis", "in_progress"].includes(c.status)).length === 0 && (
+                 <p className="text-gray-500 text-sm italic p-4 text-center border border-dashed border-gray-300 rounded-lg bg-gray-50">No complaints are currently processing.</p>
+              )}
+                </>
+              )}
+            </div>
+
+            {/* Processed Column */}
+            <div className="space-y-4">
+              <button 
+                onClick={() => setIsProcessedExpanded(!isProcessedExpanded)}
+                className="w-full flex items-center justify-between text-xl font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4 sticky top-0 bg-gray-50/80 backdrop-blur z-10 p-2 rounded-t-lg hover:bg-gray-100 transition-colors"
+              >
+                <span>Processed Complaints</span>
+                {isProcessedExpanded ? <ChevronUp className="h-6 w-6 text-gray-500" /> : <ChevronDown className="h-6 w-6 text-gray-500" />}
+              </button>
+              
+              {isProcessedExpanded && (
+                <>
+                  {filteredComplaints
+                    .filter((c) => ["verified", "resolved", "rejected"].includes(c.status))
+                    .map((complaint) => (
+                  <div
+                    key={complaint.id}
+                    className="bg-white rounded-xl shadow-sm border border-indigo-100/50 p-6 hover:shadow-md transition-shadow relative overflow-hidden group opacity-90 hover:opacity-100"
+                  >
+                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span
+                              className="font-mono text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded"
+                              title={complaint.id}
+                            >
+                              REF: #{complaint.ref_id || complaint.id.slice(0, 8)}
+                            </span>
+                          </div>
+                          <h3 className="font-semibold text-gray-800 mb-2 truncate max-w-[200px]">
+                            {complaint.description}
+                          </h3>
+                        </div>
+                        <div
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${getStatusColor(complaint.status)} shrink-0`}
+                        >
+                          {getStatusIcon(complaint.status)}
+                          <span className="text-xs font-bold uppercase tracking-wider">
+                            {complaint.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 text-xs text-gray-500 font-medium">
+                        <span className="bg-gray-100 px-2 py-1 rounded-md">📋 {complaint.category.split(" ")[0]}...</span>
+                        <span className="bg-gray-100 px-2 py-1 rounded-md">
+                          📅 {new Date(complaint.created_at).toLocaleDateString("en-IN")}
+                        </span>
+                      </div>
+
+                      <div className="pt-3 mt-1 border-t border-gray-100 flex items-center justify-between">
+                        <button
+                          onClick={() => openModal(complaint)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:underline px-2 py-1 -ml-2 rounded-md transition-colors"
+                        >
+                          View Details
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteClick(complaint.id, e)}
+                          disabled={isDeletingId === complaint.id}
+                          className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors disabled:opacity-50"
+                          title="Delete Complaint"
+                        >
+                          {isDeletingId === complaint.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })
+                ))}
+              {filteredComplaints.filter((c) => ["verified", "resolved", "rejected"].includes(c.status)).length === 0 && (
+                <p className="text-gray-500 text-sm italic p-4 text-center border border-dashed border-gray-300 rounded-lg bg-gray-50">No complaints have been processed yet.</p>
+              )}
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
       {/* Detail Modal */}
@@ -475,6 +635,40 @@ export function ComplaintTracking() {
                 className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="h-8 w-8 text-red-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Delete Complaint?</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this complaint? This action cannot be undone and will remove it permanently for both you and the administrators.
+            </p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={isDeletingId === deleteConfirmId}
+                className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={isDeletingId === deleteConfirmId}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 min-w-[120px]"
+              >
+                {isDeletingId === deleteConfirmId ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  "Delete"
+                )}
               </button>
             </div>
           </div>

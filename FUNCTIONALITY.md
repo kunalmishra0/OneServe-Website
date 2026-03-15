@@ -33,10 +33,11 @@ The platform currently supports two distinct user roles:
 
 - **Objective**: Transparency for the user regarding their reported issues.
 - **Workflow**:
-  - Users see a list of their submitted complaints.
-  - **Status Indicators**: submitted -> verifying -> in_progress -> resolved -> rejected.
-  - **Details**: Users can click to see the assigned staff, current status, and admin notes.
-  - **Filtering**: Filter by Status (Open, Closed) or Category.
+  - Users see a dynamic list of their submitted complaints separated into "Processing" and "Processed" columns.
+  - **Status Indicators**: Submitted -> Analyzing -> Staff Assigned (In Progress) -> Resolved -> Rejected.
+  - **Details**: Users can click to expand their complaint, track exact ETA, and see assigned worker details.
+  - **Synchronization**: Complaint status updates instantly and permanently over the network as soon as Admins take action.
+  - **Deletion**: Users can permanently withdraw complaints. If a worker was assigned, the system safely unassigns the worker before deleting.
 
 ### 3. 🛡️ Admin Dashboard (Official)
 
@@ -58,7 +59,16 @@ The platform currently supports two distinct user roles:
   - **Assignment**: Clicking a worker assigns them to the complaint and updates their status to "Busy" in the database.
   - **Performance Sorting**: Workers are sorted by their performance rating (Star Rating) to encourage efficiency.
 
-### 5. 💳 Bill Payments (Citizen - Simulation)
+### 5. 📧 Automated Email System (Backend)
+
+- **Objective**: Keep users instantly informed about their account and complaints without relying on the app being open.
+- **Features**:
+  - **OTP Login Verification**: Sends a 6-digit secure code on Signup/Login natively from the custom server.
+  - **Complaint Acknowledgment**: Shoots an official HTML receipt right to the inbox when a complaint is logged.
+  - **Staff Assignment Alert**: Sends a detailed timeline and contact card containing the exact worker's name, role, and ETA when an admin assigns them.
+  - **Cloud Deployed**: Runs safely as a Serverless Function on Vercel ensuring 24/7 autonomous uptime.
+
+### 6. 💳 Bill Payments (Citizen - Simulation)
 
 - **Objective**: One-stop shop for utility payments.
 - **Features**:
@@ -66,7 +76,7 @@ The platform currently supports two distinct user roles:
   - Shows "Due Date" and "Amount".
   - **Payment Flow**: Simulated payment gateway (Razorpay/Stripe placeholder) that succeeds or fails for testing purposes.
 
-### 6. 🏆 Gamification (Citizen)
+### 7. 🏆 Gamification (Citizen)
 
 - **Objective**: Encourage positive civic behavior.
 - **Features**:

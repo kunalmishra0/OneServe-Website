@@ -124,38 +124,32 @@ export function Dashboard() {
   useEffect(() => {
     if (user) {
       const fetchCount = async () => {
-        // Fetch count of complaints that are NOT resolved or rejected.
-        // We check raw_complaints first. ideally we should check processed, but for now
-        // we assume if it's not in processed as resolved, it's active.
-        // Actually, let's just count raw_complaints where status is NOT 'resolved' (if we had that column synced)
-        // Since we have a status column in raw_complaints (pending_analysis, processed),
-        // we might need to join or just count all for now if we can't join easily.
-
-        // BETTER APPROACH for 3-Layer:
-        // We want to count items in 'processed_complaints' that are active + items in 'raw_complaints' that are pending.
-        // Simplified: Count all raw_complaints for user, subtract those that are 'resolved'/'rejected' in processed.
-
-        const { count, error } = await supabase
-          .from("processed_complaints")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .in("complaint_status", [
-            "submitted",
-            "verified",
-            "in_progress",
-            "analyzing",
-          ]); // Active statuses
-
-        // Also add pending raw complaints (those not yet in processed)
-        const { count: rawCount, error: rawError } = await supabase
+        // Count Active Complaints by fetching them exactly as ComplaintTracking does to avoid mismatch
+        const { data: rawData } = await supabase
           .from("raw_complaints")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .eq("status", "pending_analysis");
+          .select("id, status")
+          .eq("user_id", user.id);
 
-        if (!error && !rawError) {
-          setActiveComplaintsCount((count || 0) + (rawCount || 0));
+        const { data: procData } = await supabase
+          .from("processed_complaints")
+          .select("id, complaint_status")
+          .eq("user_id", user.id);
+
+        let activeCount = 0;
+
+        if (rawData) {
+          rawData.forEach((raw) => {
+            const processed = procData?.find((p) => p.id === raw.id);
+            const status = processed ? processed.complaint_status : (raw.status === "processed" ? "analyzing" : "submitted");
+            
+            // Only count if it's not resolved and not rejected
+            if (status !== "resolved" && status !== "rejected") {
+              activeCount++;
+            }
+          });
         }
+
+        setActiveComplaintsCount(activeCount);
       };
 
       fetchCount();
@@ -167,7 +161,7 @@ export function Dashboard() {
           {
             event: "*",
             schema: "public",
-            table: "complaints",
+            table: "raw_complaints",
             filter: `user_id=eq.${user.id}`,
           },
           () => fetchCount(),

@@ -1,21 +1,19 @@
 import { useState, useEffect } from "react";
 import {
   X,
-  Search,
   CheckCircle,
   MapPin,
   Briefcase,
   Star,
   Info,
   Phone,
-  Calendar,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { sendStaffAssignmentNotification } from "@/lib/notifications";
 
 interface ManpowerModalProps {
   complaint: any;
-  onClose: () => void;
+  onClose: (success?: boolean) => void;
   onAssign: (staffId: string) => void;
 }
 
@@ -42,7 +40,7 @@ export function ManpowerModal({
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [sortBy, setSortBy] = useState("rating"); // rating, location
+  const [sortBy] = useState("rating"); // rating, location
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [assignmentSuccess, setAssignmentSuccess] = useState(false);
 
@@ -50,18 +48,15 @@ export function ManpowerModal({
     const staff = staffList.find((s) => s.id === staffId);
     if (!staff) return;
 
-    let eta = "Within 4 hours"; // Default for available
+    let eta = "Within next 2 - 3 business days"; // Default for available
 
     // Schedule-based Estimation
     if (staff.status === "busy") {
       // If busy, they have work lined up. Estimate based on workload.
       const workloadFactor = (staff.complaints_handled || 0) % 3;
-      if (workloadFactor === 0) eta = "Next 24 hours";
-      else if (workloadFactor === 1) eta = "Next 48 hours";
-      else eta = "By end of week";
-    } else {
-      // Available staff
-      eta = "Today (Scheduled)";
+      if (workloadFactor === 0) eta = "Within next 3 - 4 business days";
+      else if (workloadFactor === 1) eta = "Next week";
+      else eta = "By next 2 weeks";
     }
 
     // Call the parent handler
@@ -75,6 +70,7 @@ export function ManpowerModal({
         staff.full_name,
         staff.contact_number,
         eta,
+        staff.role
       );
     }
 
@@ -149,6 +145,7 @@ export function ManpowerModal({
     return () => {
       ignore = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterRole, filterStatus, sortBy]);
 
   // Client-side adjustment: Ensure "Recommended Role" is visually on top if "All" is selected
@@ -214,7 +211,7 @@ export function ManpowerModal({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={() => onClose(true)}
             className="w-full py-3 bg-gray-900 text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors"
           >
             Close & Return to Dashboard
@@ -231,7 +228,7 @@ export function ManpowerModal({
         <div className="flex-1 flex flex-col border-r border-gray-200 h-full overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <h2 className="font-bold text-gray-800">Assign Work</h2>
-            <button onClick={onClose} className="md:hidden">
+            <button onClick={() => onClose(false)} className="md:hidden">
               <X />
             </button>
           </div>
@@ -317,7 +314,7 @@ export function ManpowerModal({
           <div className="p-4 border-b border-gray-100 flex justify-between items-center">
             <h3 className="font-semibold text-gray-700">Staff Details</h3>
             <button
-              onClick={onClose}
+              onClick={() => onClose(false)}
               className="p-1 hover:bg-gray-100 rounded-full"
             >
               <X size={20} className="text-gray-400" />
