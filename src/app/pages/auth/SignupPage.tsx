@@ -45,7 +45,7 @@ export default function SignupPage() {
         throw new Error("Signup failed. Please try again.");
       }
 
-      // 2. Generate OTP and send via server-side Supabase function (uses Resend via pg_net)
+      // 2. Generate OTP and send via Vercel/Nodemailer backend API
       const otpCode = generateOTP();
 
       const result = await sendAndStoreOTP(email, otpCode, fullName);

@@ -1,7 +1,5 @@
 import { supabase } from "./supabase";
 
-const resendKey = import.meta.env.VITE_RESEND_API_KEY;
-
 /**
  * Generate a cryptographically random 6-digit OTP.
  * Falls back to Math.random if crypto API is unavailable.
@@ -19,9 +17,9 @@ export function generateOTP(): string {
 
 /**
  * Store OTP in the database, then send the email via server-side function.
- * Uses two RPC calls:
+ * Uses two mechanisms:
  *   1. Direct table operations to store the OTP
- *   2. send_email RPC to dispatch via Resend (server-side, no CORS)
+ *   2. /api/send-email fetch to dispatch via Vercel Serverless Function or Node.js
  */
 export async function sendAndStoreOTP(
   email: string,
@@ -52,43 +50,41 @@ export async function sendAndStoreOTP(
     }
 
     // 3. Send email via server-side function (no CORS)
-    if (resendKey) {
-      const otpHtml = `
-        <div style="font-family: 'Segoe UI', sans-serif; max-width: 480px; margin: 40px auto; padding: 32px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <h1 style="color: #059669; font-size: 24px; margin: 0;">OneServe</h1>
-            <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Civic Services Platform</p>
-          </div>
-          <p style="color: #334155; font-size: 16px;">Hello${userName ? ` ${userName}` : ""},</p>
-          <p style="color: #334155; font-size: 15px;">Use the following code to verify your account:</p>
-          <div style="background: linear-gradient(135deg, #059669, #10b981); padding: 20px; border-radius: 8px; text-align: center; margin: 24px 0;">
-            <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #ffffff; font-family: monospace;">${code}</span>
-          </div>
-          <p style="color: #64748b; font-size: 13px; text-align: center;">This code expires in 10 minutes.</p>
-          <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 24px;">If you didn't request this, please ignore this email.</p>
+    const otpHtml = `
+      <div style="font-family: 'Segoe UI', sans-serif; max-width: 480px; margin: 40px auto; padding: 32px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="color: #059669; font-size: 24px; margin: 0;">OneServe</h1>
+          <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Civic Services Platform</p>
         </div>
-      `;
+        <p style="color: #334155; font-size: 16px;">Hello${userName ? ` ${userName}` : ""},</p>
+        <p style="color: #334155; font-size: 15px;">Use the following code to verify your account:</p>
+        <div style="background: linear-gradient(135deg, #059669, #10b981); padding: 20px; border-radius: 8px; text-align: center; margin: 24px 0;">
+          <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #ffffff; font-family: monospace;">${code}</span>
+        </div>
+        <p style="color: #64748b; font-size: 13px; text-align: center;">This code expires in 10 minutes.</p>
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 24px;">If you didn't request this, please ignore this email.</p>
+      </div>
+    `;
 
-      const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
-      
-      const response = await fetch(`${API_URL}/api/send-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: email,
-          subject: `${code} is your OneServe verification code`,
-          html: otpHtml,
-        })
-      });
+    const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
+    
+    const response = await fetch(`${API_URL}/api/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: email,
+        subject: `${code} is your OneServe verification code`,
+        html: otpHtml,
+      })
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (!response.ok || (data && !data.success)) {
-        console.error("OTP email send error:", data.error || response.statusText);
-        // Non-fatal: OTP is stored, user can check DB or resend
-      }
+    if (!response.ok || (data && !data.success)) {
+      console.error("OTP email send error:", data.error || response.statusText);
+      // Non-fatal: OTP is stored, user can check DB or resend
     }
 
     return { success: true };
