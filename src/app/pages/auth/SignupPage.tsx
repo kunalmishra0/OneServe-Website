@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { generateOTP, sendAndStoreOTP } from "@/lib/otp";
-import { Loader2, ArrowRight, User } from "lucide-react";
+import { Loader2, ArrowRight, User, Eye, EyeOff } from "lucide-react";
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -11,6 +11,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +118,7 @@ export default function SignupPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="John Doe"
+                placeholder="Chirag Chauhan"
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none"
               />
             </div>
@@ -132,7 +133,7 @@ export default function SignupPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="john@example.com"
+                placeholder="Chirag@example.com"
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none"
               />
             </div>
@@ -142,15 +143,24 @@ export default function SignupPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Password
               </label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a strong password"
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Create a strong password"
+                  className="w-full px-4 py-3 pr-12 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
               <p className="text-xs text-gray-400 mt-1">Minimum 6 characters</p>
             </div>
 

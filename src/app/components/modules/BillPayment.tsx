@@ -2,9 +2,6 @@ import { useState } from "react";
 import {
   CreditCard,
   Shield,
-  Zap,
-  Droplet,
-  Flame,
   CheckCircle,
   AlertCircle,
 } from "lucide-react";
@@ -23,38 +20,7 @@ export function BillPayment() {
     upiId: "",
   });
 
-  const pendingBills = [
-    {
-      id: "ELEC-2026-01",
-      type: "Electricity",
-      provider: "Mumbai Power",
-      amount: 2450,
-      dueDate: "2026-01-28",
-      icon: Zap,
-      color: "bg-yellow-500",
-      billPeriod: "Dec 2025",
-    },
-    {
-      id: "WATER-2026-01",
-      type: "Water",
-      provider: "Mumbai Water Supply",
-      amount: 680,
-      dueDate: "2026-01-25",
-      icon: Droplet,
-      color: "bg-blue-500",
-      billPeriod: "Dec 2025",
-    },
-    {
-      id: "GAS-2026-01",
-      type: "Gas",
-      provider: "City Gas Distribution",
-      amount: 1250,
-      dueDate: "2026-01-30",
-      icon: Flame,
-      color: "bg-orange-500",
-      billPeriod: "Dec 2025",
-    },
-  ];
+  const pendingBills: any[] = [];
 
   const handlePayment = () => {
     setError(null);
@@ -149,60 +115,74 @@ export function BillPayment() {
             Pending Bills
           </h2>
           <div className="space-y-4">
-            {pendingBills.map((bill) => {
-              const Icon = bill.icon;
-              const isSelected = selectedBill === bill.id;
-              return (
-                <div
-                  key={bill.id}
-                  onClick={() => {
-                    setSelectedBill(bill.id);
-                    setError(null);
-                  }}
-                  className={`
-                    bg-white rounded-lg shadow-sm border-2 p-6 cursor-pointer
-                    transition-all duration-200 hover:shadow-md
-                    ${isSelected ? "border-blue-500 ring-2 ring-blue-200" : "border-gray-200"}
-                  `}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div
-                        className={`${bill.color} p-3 rounded-lg text-white`}
-                      >
-                        <Icon className="h-6 w-6" />
+            {pendingBills.length === 0 ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
+                <div className="flex justify-center mb-4">
+                  <CheckCircle className="h-12 w-12 text-green-500" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                  All caught up!
+                </h3>
+                <p className="text-gray-500">
+                  You have no pending bills at the moment.
+                </p>
+              </div>
+            ) : (
+              pendingBills.map((bill) => {
+                const Icon = bill.icon;
+                const isSelected = selectedBill === bill.id;
+                return (
+                  <div
+                    key={bill.id}
+                    onClick={() => {
+                      setSelectedBill(bill.id);
+                      setError(null);
+                    }}
+                    className={`
+                      bg-white rounded-lg shadow-sm border-2 p-6 cursor-pointer
+                      transition-all duration-200 hover:shadow-md
+                      ${isSelected ? "border-blue-500 ring-2 ring-blue-200" : "border-gray-200"}
+                    `}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-4 flex-1">
+                        <div
+                          className={`${bill.color} p-3 rounded-lg text-white`}
+                        >
+                          <Icon className="h-6 w-6" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-800 mb-1">
+                            {bill.type} Bill
+                          </h3>
+                          <p className="text-sm text-gray-600 mb-2">
+                            {bill.provider}
+                          </p>
+                          <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+                            <span>📅 Period: {bill.billPeriod}</span>
+                            <span>
+                              ⏰ Due:{" "}
+                              {new Date(bill.dueDate).toLocaleDateString("en-IN")}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-800 mb-1">
-                          {bill.type} Bill
-                        </h3>
-                        <p className="text-sm text-gray-600 mb-2">
-                          {bill.provider}
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-gray-800">
+                          ₹{bill.amount.toLocaleString("en-IN")}
                         </p>
-                        <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                          <span>📅 Period: {bill.billPeriod}</span>
-                          <span>
-                            ⏰ Due:{" "}
-                            {new Date(bill.dueDate).toLocaleDateString("en-IN")}
-                          </span>
-                        </div>
+                        {isSelected && (
+                          <div className="mt-2 flex items-center gap-1 text-blue-600 text-sm font-semibold">
+                            <CheckCircle className="h-4 w-4" />
+                            Selected
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-gray-800">
-                        ₹{bill.amount.toLocaleString("en-IN")}
-                      </p>
-                      {isSelected && (
-                        <div className="mt-2 flex items-center gap-1 text-blue-600 text-sm font-semibold">
-                          <CheckCircle className="h-4 w-4" />
-                          Selected
-                        </div>
-                      )}
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 

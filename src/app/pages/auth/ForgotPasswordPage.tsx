@@ -67,8 +67,7 @@ export default function ForgotPasswordPage() {
           ) : (
             <form onSubmit={handleResetPassword} className="space-y-6">
               <p className="text-sm text-gray-600 mb-6 font-medium">
-                Enter your registered electric company email address, and we'll
-                send you a link to get back into your account.
+                Enter your registered email address, and we'll send you a link to get back into your account.
               </p>
 
               <div>
