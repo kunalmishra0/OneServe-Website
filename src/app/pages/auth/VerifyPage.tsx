@@ -23,6 +23,7 @@ export default function VerifyPage() {
       fullName?: string;
       role?: string;
       userId?: string;
+      inviteCode?: string;
     };
     if (state?.email) {
       setEmail(state.email);
@@ -143,6 +144,18 @@ export default function VerifyPage() {
         if (citizenError) {
           console.error("Citizen profile creation error:", citizenError);
         }
+      }
+
+      // Link Worker if applicable
+      if (role === "worker" && (location.state as any)?.inviteCode) {
+         const { error: workerError } = await supabase.rpc("worker_signup_with_code", {
+            p_invite_code: (location.state as any).inviteCode
+         });
+         
+         if (workerError) {
+             console.error("Worker linking error:", workerError);
+             throw new Error("Account verified but failed to link to staff profile using invite code. Contact Admin.");
+         }
       }
 
       // 4. Success — navigate to dashboard

@@ -17,8 +17,10 @@ import { NotificationsPage } from "@/app/components/modules/NotificationsPage";
 import { AIAssistant } from "@/app/components/modules/AIAssistant";
 import { Feedback } from "@/app/components/modules/Feedback";
 import { AdminDashboard } from "@/app/components/modules/AdminDashboard";
+import { WorkerDashboard } from "@/app/components/modules/WorkerDashboard";
 import LoginPage from "@/app/pages/auth/LoginPage";
 import SignupPage from "@/app/pages/auth/SignupPage";
+import WorkerSignupPage from "@/app/pages/auth/WorkerSignupPage";
 import VerifyPage from "@/app/pages/auth/VerifyPage";
 import ForgotPasswordPage from "@/app/pages/auth/ForgotPasswordPage";
 import SettingsPage from "@/app/pages/SettingsPage";
@@ -114,6 +116,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/worker-signup" element={<WorkerSignupPage />} />
           <Route path="/verify" element={<VerifyPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
@@ -135,6 +138,7 @@ export default function App() {
             <Route path="admin-settings" element={<AdminSettings />} />
             <Route path="feedback" element={<Feedback />} />
             <Route path="admin" element={<AdminDashboard />} />
+            <Route path="field-dashboard" element={<WorkerDashboard />} />
             <Route path="schemes" element={<SchemesPage />} />
           </Route>
         </Routes>

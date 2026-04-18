@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { Session, User } from "@supabase/supabase-js";
 
 // Define the shape of our User Profile with Roles
-export type UserRole = "citizen" | "admin";
+export type UserRole = "citizen" | "admin" | "worker";
 
 export interface UserProfile {
   id: string;
@@ -16,6 +16,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
+  staffProfile: any | null;
   isLoading: boolean;
   error: string | null; // Added error state
   isAdmin: boolean;
@@ -28,6 +29,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [staffProfile, setStaffProfile] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -135,6 +137,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setError("Failed to load user profile");
         } else {
           setProfile(data as UserProfile);
+          
+          if (data.role === 'worker') {
+             const { data: staffData } = await supabase
+               .from('staff')
+               .select('*')
+               .eq('auth_user_id', userId)
+               .single();
+             if (staffData) {
+               setStaffProfile(staffData);
+             }
+          }
         }
       } catch (err: any) {
         console.error("Unexpected error fetching profile:", err);
@@ -165,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     session,
     profile,
+    staffProfile,
     isLoading,
     error,
     isAdmin: profile?.role === "admin",

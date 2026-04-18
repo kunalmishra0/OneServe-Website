@@ -12,6 +12,7 @@ import {
   LogOut,
   ShieldCheck,
   Newspaper,
+  Wrench,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -43,24 +44,33 @@ const navItems = [
 ];
 
 export function Sidebar({ isOpen, onToggle }: SidebarProps) {
-  const { signOut, isAdmin } = useAuth();
+  const { signOut, isAdmin, role } = useAuth();
   const navigate = useNavigate();
 
   // Dynamic nav items based on role
-  const displayNavItems = isAdmin
-    ? [
-        { path: "/admin", label: "Admin Dashboard", icon: ShieldCheck },
-        { path: "/admin-settings", label: "Admin Settings", icon: Settings },
-      ]
-    : [
-        ...navItems.slice(0, 5),
-        { path: "/schemes", label: "Govt. Schemes", icon: Newspaper },
-        ...navItems.slice(5),
-      ];
+  let displayNavItems = navItems;
+  if (role === "admin") {
+    displayNavItems = [
+      { path: "/admin", label: "Admin Dashboard", icon: ShieldCheck },
+      { path: "/admin-settings", label: "Admin Settings", icon: Settings },
+    ];
+  } else if (role === "worker") {
+    displayNavItems = [
+      { path: "/field-dashboard", label: "Field Dashboard", icon: Wrench },
+    ];
+  } else {
+    displayNavItems = [
+      ...navItems.slice(0, 5),
+      { path: "/schemes", label: "Govt. Schemes", icon: Newspaper },
+      ...navItems.slice(5),
+    ];
+  }
 
   const handleLogoClick = () => {
-    if (isAdmin) {
+    if (role === "admin") {
       navigate("/admin");
+    } else if (role === "worker") {
+      navigate("/field-dashboard");
     } else {
       navigate("/dashboard");
     }

@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { Loader2, ArrowRight, ShieldCheck, User, Eye, EyeOff } from "lucide-react";
+import { Loader2, ArrowRight, ShieldCheck, User, Eye, EyeOff, Wrench } from "lucide-react";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   // We'll use the profile validation logic after login if needed,
   // currently just UI selection as requested.
-  const [role, setRole] = useState<"citizen" | "admin">("citizen");
+  const [role, setRole] = useState<"citizen" | "admin" | "worker">("citizen");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -117,7 +117,7 @@ export default function LoginPage() {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
         <div className="bg-blue-600 p-8 text-center text-white">
           <div className="mb-4 flex justify-center">
-            {role === "admin" ? <ShieldCheck size={48} /> : <User size={48} />}
+            {role === "admin" ? <ShieldCheck size={48} /> : role === "worker" ? <Wrench size={48} /> : <User size={48} />}
           </div>
           <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
           <p className="opacity-90">Sign in to OneServe Portal</p>
@@ -130,30 +130,42 @@ export default function LoginPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 I am a...
               </label>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setRole("citizen")}
-                  className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-all ${
+                  className={`p-3 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${
                     role === "citizen"
                       ? "bg-blue-50 border-blue-500 text-blue-700 font-semibold"
                       : "border-gray-200 text-gray-500 hover:border-blue-300"
                   }`}
                 >
                   <User size={18} />
-                  Citizen
+                  <span className="text-sm">Citizen</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole("worker")}
+                  className={`p-3 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${
+                    role === "worker"
+                      ? "bg-blue-50 border-blue-500 text-blue-700 font-semibold"
+                      : "border-gray-200 text-gray-500 hover:border-blue-300"
+                  }`}
+                >
+                  <Wrench size={18} />
+                  <span className="text-sm">Worker</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setRole("admin")}
-                  className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-all ${
+                  className={`p-3 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${
                     role === "admin"
                       ? "bg-blue-50 border-blue-500 text-blue-700 font-semibold"
                       : "border-gray-200 text-gray-500 hover:border-blue-300"
                   }`}
                 >
                   <ShieldCheck size={18} />
-                  Admin
+                  <span className="text-sm">Admin</span>
                 </button>
               </div>
             </div>
@@ -226,16 +238,26 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-500">
-            Don't have an account?{" "}
-            <Link
-              to="/signup"
-              className="text-blue-600 hover:text-blue-800 font-semibold hover:underline"
-            >
-              Create Account
-            </Link>
+          <div className="mt-8 text-center text-sm text-gray-600 flex flex-col gap-2">
+            <p>
+              Citizen without an account?{" "}
+              <Link
+                to="/signup"
+                className="text-blue-600 hover:text-blue-800 font-semibold hover:underline"
+              >
+                Sign up
+              </Link>
+            </p>
+            <p>
+              Field worker with an invite code?{" "}
+              <Link
+                to="/worker-signup"
+                className="text-blue-600 hover:text-blue-800 font-semibold hover:underline"
+              >
+                Register here
+              </Link>
+            </p>
           </div>
-        </div>
       </div>
     </div>
   );
