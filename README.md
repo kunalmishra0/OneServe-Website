@@ -6,9 +6,11 @@
 
 For detailed information about specific aspects of the project, please refer to the following documents:
 
-- **[Functionality Guide](FUNCTIONALITY.md)**: A complete walkthrough of the user flows for Citizens and Admins (Complaint Registration, Tracking, Staff Assignment).
-- **[Technical Architecture](TECH_STACK_AND_ARCHITECTURE.md)**: Deep dive into the Tech Stack (React, Vite, Supabase), 3-Layer Database Design, and Security Policies.
-- **[Database Schema](DATABASE_SCHEMA.md)**: The exact SQL structure of the tables, including the `raw_complaints`, `processed_complaints` layer, and the `staff` table.
+- **[Functionality Guide](docs/FUNCTIONALITY.md)**: A complete walkthrough of the user flows for Citizens and Admins (Complaint Registration, Tracking, Staff Assignment).
+- **[Technical Architecture](docs/TECH_STACK_AND_ARCHITECTURE.md)**: Deep dive into the Tech Stack (React, Vite, Supabase), 3-Layer Database Design, and Security Policies.
+- **[Database Schema](docs/DATABASE_SCHEMA.md)**: The exact SQL structure of the tables, including the `raw_complaints`, `processed_complaints` layer, and the `staff` table.
+- **[Change Logs](docs/logs/)**: Detailed version-by-version record of all changes.
+- **[Implementation Plans](docs/plans/)**: Archived plans for each major feature iteration.
 
 ---
 
