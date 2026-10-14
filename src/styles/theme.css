@@ -179,3 +179,104 @@
     line-height: 1.5;
   }
 }
+
+/* ==========================================================================
+   Modal Smooth Animations & Legal Module Utilities
+   ========================================================================== */
+@keyframes modalBackdropFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalBackdropFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modalWindowScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(24px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalWindowScaleOut {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.95) translateY(14px);
+  }
+}
+
+@keyframes combinedBadgePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
+
+@keyframes itemStaggerFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-backdrop-enter {
+  animation: modalBackdropFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal-backdrop-exit {
+  animation: modalBackdropFadeOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.modal-window-enter {
+  animation: modalWindowScaleIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal-window-exit {
+  animation: modalWindowScaleOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.combined-pulse {
+  animation: combinedBadgePulse 2.2s infinite;
+}
+
+.item-stagger {
+  animation: itemStaggerFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop-enter,
+  .modal-backdrop-exit,
+  .modal-window-enter,
+  .modal-window-exit,
+  .combined-pulse,
+  .item-stagger {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+

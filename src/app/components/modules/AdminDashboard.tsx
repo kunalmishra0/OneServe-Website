@@ -1,5 +1,18 @@
 import { useState, useEffect } from "react";
-import { MapPin, X, Search, Clock, CheckCircle, Loader2 } from "lucide-react";
+import {
+  MapPin,
+  X,
+  Search,
+  Clock,
+  CheckCircle,
+  Loader2,
+  Wrench,
+  Eye,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ManpowerModal } from "./ManpowerModal";
 
@@ -8,8 +21,16 @@ interface Complaint {
   ref_id?: string;
   description: string;
   category: string;
-  status: "submitted" | "analyzing" | "verified" | "resolved" | "rejected";
+  status:
+    | "submitted"
+    | "analyzing"
+    | "verified"
+    | "in_progress"
+    | "pending_review"
+    | "resolved"
+    | "rejected";
   created_at: string;
+  updated_at?: string;
   priority_score: number;
   location: string;
   images?: string[];
@@ -17,6 +38,7 @@ interface Complaint {
   city?: string;
   citizen_email?: string;
   location_coords?: [number, number]; // [lon, lat] for ETA
+  priority_level: "low" | "medium" | "high" | "critical";
 }
 
 export function AdminDashboard() {
@@ -27,16 +49,55 @@ export function AdminDashboard() {
   );
   const [updateLoading, setUpdateLoading] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showRejectMenu, setShowRejectMenu] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [showResolved, setShowResolved] = useState(false);
+
+  const [reviewData, setReviewData] = useState<any>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+
+  // Hard Delete State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchComplaints();
   }, []);
+
+  useEffect(() => {
+    if (selectedComplaint?.status === "pending_review") {
+      fetchReviewData(selectedComplaint.id);
+    } else {
+      setReviewData(null);
+    }
+  }, [selectedComplaint]);
+
+  const fetchReviewData = async (complaintId: string) => {
+    try {
+      setReviewLoading(true);
+      const { data, error } = await supabase
+        .from("completed_complaints")
+        .select("*, staff(full_name)")
+        .eq("complaint_id", complaintId)
+        .order("completed_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) throw error;
+      setReviewData(data);
+    } catch (error) {
+      console.error("Error fetching review data:", error);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
 
   const fetchComplaints = async () => {
     try {
@@ -82,17 +143,23 @@ export function AdminDashboard() {
           category: raw.category,
           status: processed?.complaint_status || "analyzing",
           created_at: raw.created_at,
+          updated_at: processed?.updated_at || raw.updated_at,
           priority_score: processed?.priority_score || 0,
           location: locationStr,
           location_coords: raw.location?.coordinates,
-          images: raw.images,
           address_line_1: raw.address_line_1,
           city: raw.city,
           citizen_email: (raw.citizens as any)?.email,
+          priority_level: processed?.priority_level || "low",
+          raw_location: raw.location,
         };
+
       });
 
       setComplaints(merged);
+      
+      // Phase 4: Run Auto-Escalation Check (Silent)
+      await supabase.rpc("check_and_escalate_priorities");
     } catch (error) {
       console.error("Error fetching complaints:", error);
     } finally {
@@ -103,11 +170,11 @@ export function AdminDashboard() {
   // Stats Logic
   const stats = {
     pending: complaints.filter((c) =>
-      ["submitted", "analyzing", "pending_analysis"].includes(c.status),
+      ["submitted", "analyzing", "verified", "in_progress", "pending_review"].includes(c.status),
     ).length,
     pendingByCat: (() => {
       const pending = complaints.filter((c) =>
-        ["submitted", "analyzing", "pending_analysis"].includes(c.status),
+        ["submitted", "analyzing", "verified", "in_progress", "pending_review"].includes(c.status),
       );
       const catMap: Record<string, number> = {};
       pending.forEach((c) => {
@@ -131,10 +198,13 @@ export function AdminDashboard() {
     })(),
     resolvedToday: complaints.filter((c) => {
       const isResolved = c.status === "resolved";
+      // Fallback to created_at if updated_at is missing for some reason
+      const dateToCheck = c.updated_at || c.created_at;
       const isToday =
-        new Date(c.created_at).toDateString() === new Date().toDateString();
+        new Date(dateToCheck).toDateString() === new Date().toDateString();
       return isResolved && isToday;
     }).length,
+    reviewQueue: complaints.filter((c) => c.status === "pending_review").length,
     criticalArea: (() => {
       const areaCounts: Record<string, number> = {};
       complaints.forEach((c) => {
@@ -158,20 +228,48 @@ export function AdminDashboard() {
     const matchesStatus = statusFilter === "all" || c.status === statusFilter;
 
     const matchesPriority =
-      priorityFilter === "all" ||
-      (() => {
-        if (priorityFilter === "high") return c.priority_score >= 8;
-        if (priorityFilter === "medium")
-          return c.priority_score >= 5 && c.priority_score < 8;
-        if (priorityFilter === "low") return c.priority_score < 5;
-        return true;
-      })();
+      priorityFilter === "all" || c.priority_level === priorityFilter;
 
     const matchesCategory =
       categoryFilter === "all" || c.category === categoryFilter;
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
+    const matchesResolved = showResolved || c.status !== "resolved";
+
+    return (matchesSearch && matchesStatus && matchesPriority && matchesCategory && matchesResolved);
+  }).sort((a, b) => {
+
+    const weights = { critical: 4, high: 3, medium: 2, low: 1 };
+    return weights[b.priority_level] - weights[a.priority_level];
   });
+
+  const handleVerifyTask = async (approved: boolean, feedback: string) => {
+    if (!selectedComplaint) return;
+    setUpdateLoading(true);
+    try {
+      const { error } = await supabase.rpc("admin_verify_task", {
+        p_complaint_id: selectedComplaint.id,
+        p_approved: approved,
+        p_feedback: feedback,
+      });
+
+      if (error) throw error;
+
+      // Update local state
+      setComplaints((prev) =>
+        prev.map((c) =>
+          c.id === selectedComplaint.id
+            ? { ...c, status: approved ? "resolved" : "verified" }
+            : c,
+        ),
+      );
+      setSelectedComplaint(null);
+    } catch (error) {
+      console.error("Error verifying task:", error);
+      alert("Failed to verify task. Please try again.");
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -181,6 +279,10 @@ export function AdminDashboard() {
         return "bg-blue-50 text-blue-600";
       case "verified":
         return "bg-blue-100 text-blue-800";
+      case "in_progress":
+        return "bg-amber-100 text-amber-800";
+      case "pending_review":
+        return "bg-indigo-100 text-indigo-800 animate-pulse";
       case "resolved":
         return "bg-green-100 text-green-800";
       case "rejected":
@@ -192,8 +294,19 @@ export function AdminDashboard() {
 
   const getPriorityColor = (score: number) => {
     if (score >= 8) return "text-red-700 bg-red-50 border-red-200";
-    if (score >= 5) return "text-yellow-700 bg-yellow-50 border-yellow-200";
+    if (score >= 5.5) return "text-orange-700 bg-orange-50 border-orange-200";
+    if (score >= 3.5) return "text-amber-700 bg-amber-50 border-amber-200";
     return "text-green-700 bg-green-50 border-green-200";
+  };
+
+  const getPriorityLevelColor = (level: string) => {
+    switch (level) {
+      case "critical": return "bg-red-600 text-white shadow-sm shadow-red-200";
+      case "high": return "bg-orange-500 text-white shadow-sm shadow-orange-100";
+      case "medium": return "bg-amber-400 text-gray-900";
+      case "low": return "bg-emerald-500 text-white";
+      default: return "bg-gray-400 text-white";
+    }
   };
 
   const handleStatusUpdate = async (newStatus: string) => {
@@ -229,6 +342,30 @@ export function AdminDashboard() {
     }
   };
 
+  const handleHardDelete = async () => {
+    if (!selectedComplaint || deleteInput !== "DELETE") return;
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase.rpc("admin_hard_delete_complaint", {
+        p_complaint_id: selectedComplaint.id
+      });
+
+      if (error) throw error;
+
+      // Update local state
+      setComplaints(prev => prev.filter(c => c.id !== selectedComplaint.id));
+      setSelectedComplaint(null);
+      setShowDeleteConfirm(false);
+      setDeleteInput("");
+      alert("Complaint and all associated data permanently deleted.");
+    } catch (err: any) {
+      console.error("Hard delete failed:", err);
+      alert(`Error deleting complaint: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-8 min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto">
@@ -245,21 +382,65 @@ export function AdminDashboard() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div 
+            onClick={() => {
+              setStatusFilter("all");
+              setPriorityFilter("all");
+              setCategoryFilter("all");
+              setSearchQuery("");
+            }}
+            className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer hover:border-blue-200 transition-all group"
+          >
             <div>
-              <p className="text-sm font-medium text-gray-500 mb-1">
-                Total Pending
+              <p className="text-sm font-medium text-gray-500 mb-1 group-hover:text-blue-600 transition-colors">
+                Total Active
               </p>
               <p className="text-3xl font-bold text-gray-900">
                 {stats.pending}
               </p>
-              <p className="text-[10px] text-gray-400 mt-1 font-mono uppercase tracking-tight">
+              <p className="text-[10px] text-blue-500 mt-1 font-bold uppercase tracking-tight">
                 {stats.pendingByCat}
               </p>
             </div>
-            <div className="h-12 w-12 bg-yellow-50 rounded-lg flex items-center justify-center text-yellow-600">
+
+            <div className="h-12 w-12 bg-yellow-50 rounded-lg flex items-center justify-center text-yellow-600 group-hover:scale-110 transition-transform">
               <Clock size={24} />
+            </div>
+          </div>
+
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500 mb-1">
+                In Progress
+              </p>
+              <p className="text-3xl font-bold text-gray-900">
+                {complaints.filter((c) => c.status === "in_progress").length}
+              </p>
+            </div>
+            <div className="h-12 w-12 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600">
+              <Wrench size={24} />
+            </div>
+          </div>
+
+          <div 
+            onClick={() => setStatusFilter("pending_review")}
+            className="bg-white p-6 rounded-xl shadow-sm border border-indigo-200 flex items-center justify-between relative overflow-hidden cursor-pointer group"
+          >
+            <div>
+              <p className="text-sm font-medium text-indigo-600 mb-1 font-bold">
+                To Review
+              </p>
+              <p className="text-3xl font-bold text-indigo-900">
+                {stats.reviewQueue}
+              </p>
+              <p className="text-[10px] text-indigo-400 mt-1 uppercase font-bold">
+                Awaiting Approval
+              </p>
+            </div>
+            <div className="h-12 w-12 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 border border-indigo-100 group-hover:scale-110 transition-transform">
+              <CheckCircle2 size={24} />
             </div>
           </div>
 
@@ -276,28 +457,33 @@ export function AdminDashboard() {
               <CheckCircle size={24} />
             </div>
           </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 mb-1">
-                Most Critical Area
-              </p>
-              <p
-                className="text-xl font-bold text-gray-900 truncate max-w-[150px]"
-                title={stats.criticalArea}
-              >
-                {stats.criticalArea}
-              </p>
-            </div>
-            <div className="h-12 w-12 bg-red-50 rounded-lg flex items-center justify-center text-red-600">
-              <MapPin size={24} />
-            </div>
-          </div>
         </div>
 
         {/* Filters & Data Grid */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           {/* Filter Bar */}
+          {/* Multi-Level Queue Tabs */}
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setPriorityFilter("critical")}
+              className={`flex-1 px-4 py-3 text-xs font-bold border-b-2 transition-all ${priorityFilter === "critical" ? "border-red-600 text-red-600 bg-red-50" : "border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+            >
+              CRITICAL QUEUE ({complaints.filter(c => c.priority_level === 'critical').length})
+            </button>
+            <button
+              onClick={() => setPriorityFilter("high")}
+              className={`flex-1 px-4 py-3 text-xs font-bold border-b-2 transition-all ${priorityFilter === "high" ? "border-orange-500 text-orange-500 bg-orange-50" : "border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+            >
+              HIGH PRIORITY ({complaints.filter(c => c.priority_level === 'high').length})
+            </button>
+            <button
+              onClick={() => setPriorityFilter("all")}
+              className={`flex-1 px-4 py-3 text-xs font-bold border-b-2 transition-all ${priorityFilter === "all" ? "border-blue-600 text-blue-600 bg-blue-50" : "border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+            >
+              ALL COMPLAINTS
+            </button>
+          </div>
+
           <div className="p-4 border-b border-gray-200 bg-gray-50/50 flex flex-col xl:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -310,7 +496,10 @@ export function AdminDashboard() {
               />
             </div>
 
+
+
             <div className="flex flex-wrap gap-3">
+
               <select
                 className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 value={statusFilter}
@@ -319,8 +508,14 @@ export function AdminDashboard() {
                 <option value="all">All Status</option>
                 <option value="submitted">Submitted</option>
                 <option value="analyzing">Analyzing</option>
-                <option value="verified">Verified</option>
-                <option value="resolved">Resolved</option>
+                <option value="verified">
+                  Verified (Ready for Assignment)
+                </option>
+                <option value="in_progress">In Progress (Field Action)</option>
+                <option value="pending_review">
+                  Pending Review (Awaiting Approval)
+                </option>
+                <option value="resolved">Resolved (Completed)</option>
                 <option value="rejected">Rejected</option>
               </select>
 
@@ -351,10 +546,36 @@ export function AdminDashboard() {
                 <option value="Traffic">Traffic</option>
                 <option value="Others">Others</option>
               </select>
+
+              <button
+                onClick={() => {
+                  setStatusFilter("all");
+                  setPriorityFilter("all");
+                  setCategoryFilter("all");
+                  setSearchQuery("");
+                }}
+                className="px-4 py-2 bg-blue-600 text-white border border-blue-700 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm shadow-blue-100"
+              >
+                <RefreshCw size={14} />
+                Clear Filters
+              </button>
+
+              <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={showResolved} 
+                  onChange={(e) => setShowResolved(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-bold text-gray-700">Show Resolved</span>
+              </label>
             </div>
+
+
           </div>
 
           {/* Table */}
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
@@ -431,11 +652,18 @@ export function AdminDashboard() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getPriorityColor(complaint.priority_score)}`}
-                        >
-                          {complaint.priority_score.toFixed(1)} / 10
-                        </span>
+                        <div className="flex flex-col gap-1.5">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getPriorityColor(complaint.priority_score)}`}
+                          >
+                            {complaint.priority_score.toFixed(1)} / 10
+                          </span>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${getPriorityLevelColor(complaint.priority_level)}`}
+                          >
+                            {complaint.priority_level}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <span
@@ -443,6 +671,20 @@ export function AdminDashboard() {
                         >
                           {complaint.status}
                         </span>
+                        {complaint.status !== "resolved" && complaint.status !== "rejected" && complaint.priority_level !== "critical" && (
+                          <div className="mt-1 text-[9px] text-orange-600 font-bold flex items-center gap-1 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
+                            <Clock size={10} className="animate-pulse" />
+                            {(() => {
+                              const ageHours = (new Date().getTime() - new Date(complaint.created_at).getTime()) / (1000 * 60 * 60);
+                              // Calculate time until next level
+                              const nextEscalation = 
+                                complaint.priority_level === 'low' ? 24 :
+                                complaint.priority_level === 'medium' ? 48 : 72;
+                              const remaining = Math.max(0, Math.ceil(nextEscalation - ageHours));
+                              return remaining > 0 ? `Escalates in ~${remaining}h` : "Escalation Overdue";
+                            })()}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -501,34 +743,207 @@ export function AdminDashboard() {
               </div>
 
               <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-                {/* Status Control */}
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Update Status
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      "submitted",
-                      "analyzing",
-                      "verified",
-                      "resolved",
-                      "rejected",
-                    ].map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => handleStatusUpdate(s)}
-                        disabled={updateLoading}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize border transition-colors ${
-                          selectedComplaint.status === s
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
-                        }`}
+                {/* Status & Control Section */}
+                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
+                        Current Status
+                      </p>
+                      <span
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold capitalize ${getStatusColor(selectedComplaint.status)}`}
                       >
-                        {s}
-                      </button>
-                    ))}
+                        {selectedComplaint.status.replace("_", " ")}
+                      </span>
+                    </div>
+
+                    {/* Manual Reject Button (Only for unassigned/unresolved complaints) */}
+                    {["analyzing", "verified", "submitted"].includes(
+                      selectedComplaint.status,
+                    ) && (
+                      <div className="relative">
+                        {!showRejectMenu ? (
+                          <button
+                            onClick={() => setShowRejectMenu(true)}
+                            className="text-red-600 bg-white border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors flex items-center gap-2"
+                          >
+                            <X size={16} /> Reject Complaint
+                          </button>
+                        ) : (
+                          <div className="bg-white border border-red-200 shadow-lg rounded-lg p-3 absolute right-0 top-10 w-56 z-10">
+                            <p className="text-xs font-bold text-gray-700 mb-2">
+                              Why reject this?
+                            </p>
+                            <select
+                              className="w-full text-sm border border-gray-300 p-1.5 rounded mb-2"
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                            >
+                              <option value="">Select reason...</option>
+                              <option value="Spam / Fake image">
+                                Spam / Fake image
+                              </option>
+                              <option value="Out of Jurisdiction">
+                                Out of Jurisdiction
+                              </option>
+                              <option value="Duplicate Complaint">
+                                Duplicate Complaint
+                              </option>
+                              <option value="Not a civic issue">
+                                Not a civic issue
+                              </option>
+                            </select>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setShowRejectMenu(false);
+                                  setRejectReason("");
+                                }}
+                                className="flex-1 bg-gray-100 text-gray-700 font-bold text-xs py-1.5 rounded hover:bg-gray-200 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                disabled={!rejectReason}
+                                onClick={async () => {
+                                  await handleStatusUpdate("rejected");
+                                  if (selectedComplaint.citizen_email) {
+                                    import("@/lib/notifications").then((m) =>
+                                      m.sendComplaintRejectionNotification(
+                                        selectedComplaint.citizen_email!,
+                                        selectedComplaint.ref_id ||
+                                          selectedComplaint.id,
+                                        rejectReason,
+                                      ),
+                                    );
+                                  }
+                                  setShowRejectMenu(false);
+                                  setRejectReason("");
+                                }}
+                                className="flex-1 bg-red-600 text-white font-bold text-xs py-1.5 rounded disabled:opacity-50 hover:bg-red-700 transition-colors"
+                              >
+                                Confirm
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Contextual Information */}
+                  <div className="text-sm text-gray-500">
+                    {selectedComplaint.status === "analyzing" &&
+                      "AI is currently extracting location and priority details..."}
+                    {selectedComplaint.status === "verified" &&
+                      "AI Analysis complete. Ready for field assignment."}
+                    {selectedComplaint.status === "in_progress" &&
+                      "Work order is active. Field agent is on-site."}
+                    {selectedComplaint.status === "pending_review" &&
+                      "Worker has submitted completion proof. Awaiting your approval."}
+                    {selectedComplaint.status === "resolved" &&
+                      "This issue has been successfully resolved and closed."}
                   </div>
                 </div>
+
+                {/* Worker Resolution Proof - NEW */}
+                {selectedComplaint.status === "pending_review" && (
+                  <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-indigo-900 flex items-center gap-2">
+                        <CheckCircle2 className="text-indigo-600" />
+                        Worker Resolution Proof
+                      </h3>
+                      {reviewLoading && (
+                        <Loader2 className="h-4 w-4 text-indigo-600 animate-spin" />
+                      )}
+                    </div>
+
+                    {reviewData ? (
+                      <div className="space-y-4">
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-indigo-400 uppercase mb-1">
+                              Submitted By
+                            </p>
+                            <p className="text-sm font-medium text-gray-800">
+                              {reviewData.staff?.full_name || "Field Agent"}
+                            </p>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-indigo-400 uppercase mb-1">
+                              Completion Date
+                            </p>
+                            <p className="text-sm font-medium text-gray-800">
+                              {new Date(
+                                reviewData.completed_at,
+                              ).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-bold text-indigo-400 uppercase mb-1">
+                            Worker Notes
+                          </p>
+                          <div className="bg-white p-3 rounded-lg border border-indigo-50 text-sm text-gray-700 italic">
+                            "{reviewData.notes || "No notes provided"}"
+                          </div>
+                        </div>
+
+                        {reviewData.image_url && (
+                          <div>
+                            <p className="text-xs font-bold text-indigo-400 uppercase mb-1">
+                              Resolution Photo
+                            </p>
+                            <a
+                              href={reviewData.image_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block aspect-video bg-gray-200 rounded-lg overflow-hidden border border-indigo-100 hover:opacity-90 transition-opacity"
+                            >
+                              <img
+                                src={reviewData.image_url}
+                                alt="Resolution Proof"
+                                className="w-full h-full object-cover"
+                              />
+                            </a>
+                          </div>
+                        )}
+
+                        <div className="flex gap-3 pt-2">
+                          <button
+                            onClick={() =>
+                              handleVerifyTask(true, "Work approved by admin.")
+                            }
+                            disabled={updateLoading}
+                            className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle2 size={18} /> Approve & Close
+                          </button>
+                          <button
+                            onClick={() => {
+                              const reason = prompt(
+                                "Enter reason for rejection:",
+                              );
+                              if (reason) handleVerifyTask(false, reason);
+                            }}
+                            disabled={updateLoading}
+                            className="flex-1 bg-white text-red-600 border border-red-200 py-2 rounded-lg font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <AlertCircle size={18} /> Reject / Rework
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      !reviewLoading && (
+                        <p className="text-sm text-indigo-400 italic text-center py-4">
+                          No completion proof found for this task.
+                        </p>
+                      )
+                    )}
+                  </div>
+                )}
 
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
@@ -596,23 +1011,62 @@ export function AdminDashboard() {
                   )}
               </div>
 
-              <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 sticky bottom-0 rounded-b-xl">
-                <button
-                  onClick={() => setSelectedComplaint(null)}
-                  className="px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => setShowAssignModal(true)}
-                  className="px-4 py-2 border border-transparent bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-                >
-                  Assign Work
-                </button>
+              <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-between items-center gap-3 sticky bottom-0 rounded-b-xl">
+                <div>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="px-4 py-2 bg-red-50 text-red-600 rounded-lg font-bold hover:bg-red-100 transition-colors flex items-center gap-2"
+                  >
+                    <Trash2 size={18} />
+                    Hard Delete
+                  </button>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSelectedComplaint(null)}
+                    className="px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                  >
+                    Close
+                  </button>
+
+                  {/* Assignment Logic: Only show if NOT in progress, review, resolved, or rejected */}
+                  {![
+                  "in_progress",
+                  "pending_review",
+                  "resolved",
+                  "rejected",
+                ].includes(selectedComplaint.status) ? (
+                  <button
+                    onClick={() => setShowAssignModal(true)}
+                    className="px-4 py-2 border border-transparent bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-lg shadow-blue-100"
+                  >
+                    Assign Work
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-500 rounded-lg text-sm font-medium border border-gray-200">
+                    {selectedComplaint.status === "resolved" ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    ) : selectedComplaint.status === "rejected" ? (
+                      <X className="h-4 w-4 text-red-500" />
+                    ) : (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    )}
+                    {selectedComplaint.status === "in_progress" &&
+                      "Currently in Field Action"}
+                    {selectedComplaint.status === "pending_review" &&
+                      "Awaiting Your Final Review"}
+                    {selectedComplaint.status === "resolved" &&
+                      "Task Already Resolved"}
+                    {selectedComplaint.status === "rejected" &&
+                      "Complaint Rejected"}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
         {/* Assign Work Modal */}
         {showAssignModal && selectedComplaint && (
@@ -622,35 +1076,68 @@ export function AdminDashboard() {
               setShowAssignModal(false);
               if (success) {
                 setSelectedComplaint(null);
+                fetchComplaints(); // Refresh the list after bundle assignments
               }
             }}
-            onAssign={async (staffId) => {
-              // TODO: Implement assignment logic (update staff availability, log activity, etc.)
-              // Just demo closing for now
-              console.log("Assigned to:", staffId);
-
-              try {
-                // 1. Update Staff Status
-                await supabase
-                  .from("staff")
-                  .update({
-                    status: "busy",
-                    current_assignment_id: selectedComplaint.id,
-                  })
-                  .eq("id", staffId);
-
-                // 2. Update Complaint Log / Status (optional)
-                await handleStatusUpdate("in_progress");
-
-                // alert("Work Assigned Successfully!"); -> Removed, handled by ManpowerModal
-                // setShowAssignModal(false); -> Logic moved to ManpowerModal close button
-                // setSelectedComplaint(null); -> Logic moved to ManpowerModal close button
-              } catch (err) {
-                console.error(err);
-                alert("Failed to assign.");
-              }
+            onAssign={(staffId) => {
+              // Now completely handled by the ManpowerModal via assign_task_bundle RPC
+              console.log("Assignment initiated for:", staffId);
             }}
           />
+        )}
+
+        {/* HARD DELETE CONFIRMATION MODAL */}
+        {showDeleteConfirm && selectedComplaint && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-red-100">
+              <div className="bg-red-50 p-6 flex flex-col items-center text-center border-b border-red-100">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+                  <AlertCircle size={32} />
+                </div>
+                <h2 className="text-xl font-bold text-red-900 mb-2">Permanent Deletion</h2>
+                <p className="text-red-700 text-sm">
+                  This action cannot be undone. It will permanently wipe the complaint, AI analysis, field assignments, and completion proofs from the database.
+                </p>
+              </div>
+              
+              <div className="p-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Type <span className="font-mono bg-gray-100 text-red-600 px-1 rounded select-none">DELETE</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteInput}
+                  onChange={(e) => setDeleteInput(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full border-2 border-gray-300 rounded-lg p-3 text-lg font-mono focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all uppercase mb-6"
+                />
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteInput("");
+                    }}
+                    className="flex-1 bg-white border border-gray-300 text-gray-700 font-bold py-3 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleHardDelete}
+                    disabled={deleteInput !== "DELETE" || isDeleting}
+                    className={`flex-1 font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-all ${
+                      deleteInput === "DELETE" && !isDeleting
+                        ? "bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-200" 
+                        : "bg-red-200 text-red-400 cursor-not-allowed"
+                    }`}
+                  >
+                    {isDeleting ? <Loader2 className="animate-spin h-5 w-5" /> : <Trash2 className="h-5 w-5" />}
+                    Confirm Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

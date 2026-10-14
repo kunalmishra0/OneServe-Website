@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   Newspaper,
   Wrench,
+  Users,
+  Scale,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -34,11 +36,10 @@ const navItems = [
     label: "Track Complaints",
     icon: ClipboardList,
   },
-  { path: "/bill-payment", label: "Pay Bills", icon: CreditCard },
-  { path: "/bill-management", label: "Bill Management", icon: FolderOpen },
-  { path: "/gamification", label: "Rewards & Badges", icon: Trophy },
   { path: "/notifications", label: "Notifications", icon: Bell },
-  { path: "/ai-assistant", label: "AI Assistant", icon: Bot },
+  { path: "/bill-payment", label: "Bill Payment", icon: CreditCard },
+  { path: "/schemes", label: "Govt. Schemes", icon: Newspaper },
+  { path: "/law-advisor", label: "Law Advisor", icon: Scale },
   { path: "/feedback", label: "Feedback", icon: MessageCircle },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
@@ -52,17 +53,12 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
   if (role === "admin") {
     displayNavItems = [
       { path: "/admin", label: "Admin Dashboard", icon: ShieldCheck },
+      { path: "/staff-management", label: "Staff Management", icon: Users },
       { path: "/admin-settings", label: "Admin Settings", icon: Settings },
     ];
   } else if (role === "worker") {
     displayNavItems = [
       { path: "/field-dashboard", label: "Field Dashboard", icon: Wrench },
-    ];
-  } else {
-    displayNavItems = [
-      ...navItems.slice(0, 5),
-      { path: "/schemes", label: "Govt. Schemes", icon: Newspaper },
-      ...navItems.slice(5),
     ];
   }
 

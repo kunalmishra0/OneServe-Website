@@ -49,6 +49,7 @@
     "motion": "12.23.24",
     "next-themes": "0.4.6",
     "nodemailer": "^8.0.2",
+    "razorpay": "^2.9.8",
     "react-day-picker": "8.10.1",
     "react-hook-form": "7.55.0",
     "react-resizable-panels": "2.1.7",
@@ -61,6 +62,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "4.7.0",
     "concurrently": "^9.2.1",
     "tailwindcss": "4.1.12",

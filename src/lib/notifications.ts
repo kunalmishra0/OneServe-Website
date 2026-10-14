@@ -96,3 +96,33 @@ export const sendStaffAssignmentNotification = async (
     `,
   );
 };
+
+export const sendComplaintRejectionNotification = async (
+  email: string,
+  refId: string,
+  reason: string,
+) => {
+  await sendEmail(
+    email,
+    `Complaint Update - ${refId}`,
+    `
+      <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="color: #059669; font-size: 24px; margin: 0;">OneServe</h1>
+          <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Civic Services Platform</p>
+        </div>
+        <h2 style="color: #ef4444;">Complaint Rejected</h2>
+        <p>Hello,</p>
+        <p>We have reviewed your complaint (Reference ID: <strong>${refId}</strong>) and unfortunately, we are unable to process it further at this time.</p>
+        
+        <div style="background-color: #fef2f2; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444;">
+          <p style="margin: 0;"><strong>Reason for rejection:</strong></p>
+          <p style="margin: 5px 0 0 0; color: #991b1b;">${reason}</p>
+        </div>
+        
+        <p>If you believe this was an error, please submit a new complaint with clearer evidence or contact support.</p>
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Best regards,<br/>The OneServe Team</p>
+      </div>
+    `,
+  );
+};

@@ -50,6 +50,7 @@ export function ComplaintRegistration() {
     city: "",
     pincode: "",
   });
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [images, setImages] = useState<File[]>([]);
 
   // Input method states
@@ -195,6 +196,7 @@ export function ComplaintRegistration() {
             city: formData.city,
             state: formData.state,
             pincode: formData.pincode,
+            location: coords ? `SRID=4326;POINT(${coords.lng} ${coords.lat})` : null,
             images: [], // Will update after upload
             status: "pending_analysis",
           },
@@ -264,17 +266,18 @@ export function ComplaintRegistration() {
         if (updateError) throw updateError;
       }
 
-      // 3. Trigger Layer 2 (Simulated Trigger or Manual Insert for Demo)
-      // Ideally a Postgres Trigger or Edge Function does this.
-      // For this demo, we manually insert into processed_complaints
+      // 3. Trigger Layer 2 (Simulated Trigger for Demo)
       setTimeout(async () => {
         const randomPriority = (Math.random() * 10).toFixed(1);
-        await supabase.from("processed_complaints").insert({
+        const initialLevel = parseFloat(randomPriority) >= 8 ? "critical" : 
+                             parseFloat(randomPriority) >= 6 ? "high" :
+                             parseFloat(randomPriority) >= 3 ? "medium" : "low";
+
+        const { data: procData, error: procErr } = await supabase.from("processed_complaints").insert({
           id: complaintId,
           user_id: user.id,
           description: rawData.description,
           category: rawData.category,
-          // location_text: rawData.location_text,
           address_line_1: rawData.address_line_1,
           address_line_2: rawData.address_line_2,
           city: rawData.city,
@@ -282,18 +285,29 @@ export function ComplaintRegistration() {
           pincode: rawData.pincode,
           images: imageUrls,
           priority_score: parseFloat(randomPriority),
-          admin_visible: parseFloat(randomPriority) > 5, // Simple logic
+          priority_level: initialLevel,
+          admin_visible: true, 
           ai_status: "analyzed",
-          complaint_status: "submitted",
+          complaint_status: "analyzing", // Start in Analyzing
           ai_analysis_json: { note: "Simulated AI Analysis" },
-        });
+        }).select().single();
 
         // Mark raw as processed
         await supabase
           .from("raw_complaints")
           .update({ status: "processed" })
           .eq("id", complaintId);
-      }, 2000); // 2 second delay to simulate processing
+
+        // Simulation: After 5 more seconds, move to 'verified'
+        setTimeout(async () => {
+          await supabase
+            .from("processed_complaints")
+            .update({ complaint_status: "verified" })
+            .eq("id", complaintId);
+          console.log("AI Verification Complete for:", complaintId);
+        }, 5000);
+        
+      }, 2000); // 2 second delay to simulate initial processing
 
       setShowSuccess(true);
       setFormData({
@@ -580,14 +594,16 @@ export function ComplaintRegistration() {
                     address_line_1: "Finding...",
                   }));
                   navigator.geolocation.getCurrentPosition(
-                    (pos) =>
+                    (pos) => {
                       setFormData((prev) => ({
                         ...prev,
-                        address_line_1: `Lat: ${pos.coords.latitude}, Long: ${pos.coords.longitude}`,
+                        address_line_1: prev.address_line_1 || "Current GPS Location",
                         state: "Delhi",
                         city: "New Delhi",
                         pincode: "110001",
-                      })),
+                      }));
+                      setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                    },
                     (err) => {
                       console.error("Geolocation error:", err);
                       setFormData((prev) => ({ ...prev, address_line_1: "" }));

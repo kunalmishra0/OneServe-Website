@@ -19,14 +19,20 @@ interface Complaint {
   id: string;
   description: string;
   category: string;
-  status: "submitted" | "analyzing" | "verified" | "in_progress" | "resolved" | "rejected";
+  status: "submitted" | "analyzing" | "verified" | "in_progress" | "resolved" | "rejected" | "pending_review";
   created_at: string;
   priority_score: number;
   location: string;
   images?: string[];
   admin_visible?: boolean;
   ref_id?: string;
+  resolution_proof?: {
+    image_url: string;
+    notes: string;
+  };
+  estimated_resolution?: string;
 }
+
 
 export function ComplaintTracking() {
   const { user } = useAuth();
@@ -34,145 +40,79 @@ export function ComplaintTracking() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(
-    null,
-  );
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
   const [isProcessingExpanded, setIsProcessingExpanded] = useState(true);
   const [isProcessedExpanded, setIsProcessedExpanded] = useState(true);
 
-  const openModal = (complaint: Complaint) => setSelectedComplaint(complaint);
-
   useEffect(() => {
     if (user) {
       fetchComplaints();
-
-      // Real-time subscription to 'raw_complaints'
       const channel = supabase
         .channel("public:raw_complaints")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "raw_complaints",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            console.log("Real-time change:", payload);
-            fetchComplaints(); // Refresh data on change
-          },
-        )
+        .on("postgres_changes", { event: "*", schema: "public", table: "raw_complaints", filter: `user_id=eq.${user.id}` }, () => fetchComplaints())
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
+      return () => { supabase.removeChannel(channel); };
     }
   }, [user]);
 
-  /* New: 3-Layer System Integration */
   const fetchComplaints = async () => {
     if (!user) return;
     try {
       setLoading(true);
-      // 1. Fetch Raw Complaints (Layer 1)
       const { data: rawData, error: rawError } = await supabase
         .from("raw_complaints")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      if (rawError) {
-        // Fallback to old table if migration missing
-        if (
-          rawError.code === "PGRST204" ||
-          rawError.message.includes("does not exist")
-        ) {
-          console.warn("Using fallback 'complaints' table");
-          const { data, error } = await supabase
-            .from("complaints")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false });
-          if (error) throw error;
-          setComplaints(data || []);
-          return;
-        }
-        throw rawError;
-      }
+      if (rawError) throw rawError;
 
-      const enrichedComplaints = [];
-
-      // 2. Fetch Processed Data (Layer 2) for these complaints
       if (rawData && rawData.length > 0) {
         const rawIds = rawData.map((c) => c.id);
-        const { data: processedData, error: procError } = await supabase
+        const { data: processedData } = await supabase
           .from("processed_complaints")
           .select("*")
           .in("id", rawIds);
 
-        if (!procError && processedData) {
-          // Merge Data
-          for (const raw of rawData) {
-            const processed = processedData.find((p) => p.id === raw.id);
+        const enriched: Complaint[] = rawData.map((raw) => {
+          const processed = processedData?.find((p) => p.id === raw.id);
+          const locationStr = [raw.address_line_1, raw.address_line_2, raw.city, raw.state, raw.pincode].filter(Boolean).join(", ") || raw.location_text;
+          
+          return {
+            id: raw.id,
+            ref_id: raw.ref_id,
+            description: raw.description,
+            category: raw.category,
+            location: locationStr,
+            created_at: raw.created_at,
+            images: raw.images,
+            status: processed ? processed.complaint_status : "analyzing",
+            priority_score: processed ? processed.priority_score : 0,
+            admin_visible: processed ? processed.admin_visible : false,
+            estimated_resolution: processed?.estimated_resolution,
+          };
 
-            // Construct location string from split fields (or fallback to old field if migration pending)
-            const locationStr =
-              [
-                raw.address_line_1,
-                raw.address_line_2,
-                raw.city,
-                raw.state,
-                raw.pincode,
-              ]
-                .filter(Boolean)
-                .join(", ") || raw.location_text;
+        });
 
-            enrichedComplaints.push({
-              id: raw.id,
-              ref_id: raw.ref_id,
-              description: raw.description, // or processed.description
-              category: raw.category,
-              location: locationStr,
-              created_at: raw.created_at,
-              images: raw.images, // Use Raw images (or processed if AI filtered them)
-              status: processed ? processed.complaint_status : "analyzing", // Show 'analyzing' if not yet processed
-              // Hide priority from citizen view unless necessary, but we might store it in state if logic needs it.
-              // For UI simple display, we map status.
-              priority_score: processed ? processed.priority_score : 0,
-              admin_visible: processed ? processed.admin_visible : false,
+        // Fetch resolution proofs
+        const resolvedIds = enriched.filter(c => c.status === 'resolved' || c.status === 'pending_review').map(c => c.id);
+        if (resolvedIds.length > 0) {
+          const { data: proofData } = await supabase
+            .from('completed_complaints')
+            .select('complaint_id, image_url, notes')
+            .in('complaint_id', resolvedIds);
+          
+          if (proofData) {
+            enriched.forEach(c => {
+              const proof = proofData.find(p => p.complaint_id === c.id);
+              if (proof) c.resolution_proof = { image_url: proof.image_url, notes: proof.notes };
             });
           }
-        } else {
-          // If fetching processed failed or empty, just show raw as 'submitted/analyzing'
-          enrichedComplaints.push(
-            ...rawData.map((r) => {
-              const locationStr =
-                [r.address_line_1, r.address_line_2, r.city, r.state, r.pincode]
-                  .filter(Boolean)
-                  .join(", ") || r.location_text;
-
-              return {
-                id: r.id,
-                ref_id: r.ref_id,
-                description: r.description,
-                category: r.category,
-                location: locationStr,
-                created_at: r.created_at,
-                images: r.images,
-                status: r.status === "processed" ? "analyzing" : "submitted", // If raw says processed but we found no record, it's weird.
-                priority_score: 0,
-                admin_visible: false,
-              };
-            }),
-          );
         }
-        setComplaints(enrichedComplaints);
-      } else {
-        setComplaints([]);
+        setComplaints(enriched);
       }
     } catch (error) {
       console.error("Error fetching complaints:", error);
@@ -181,499 +121,233 @@ export function ComplaintTracking() {
     }
   };
 
-  const handleDeleteClick = (complaintId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDeleteConfirmId(complaintId);
-  };
-
   const confirmDelete = async () => {
     if (!deleteConfirmId) return;
-
     try {
       setIsDeletingId(deleteConfirmId);
-      
-      // Use secure backend RPC to detach workers and safely delete the complaint
-      const { error } = await supabase.rpc("citizen_delete_complaint", {
-        p_complaint_id: deleteConfirmId,
-      });
-
-      if (error) {
-        throw new Error(error.message || "Failed to permanently delete complaint");
-      }
-      
+      const { error } = await supabase.rpc("citizen_delete_complaint", { p_complaint_id: deleteConfirmId });
+      if (error) throw error;
       setComplaints(complaints.filter(c => c.id !== deleteConfirmId));
-    } catch (err: any) {
-      console.error("Error deleting complaint:", err);
-      alert(`Error deleting complaint: ${err.message}`);
+      setDeleteConfirmId(null);
+    } catch (error) {
+      alert("Error deleting complaint");
     } finally {
       setIsDeletingId(null);
-      setDeleteConfirmId(null);
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "submitted":
-      case "analyzing":
-      case "pending_analysis":
-        return <Clock className="h-5 w-5 text-yellow-600" />;
-      case "in_progress":
-        return <AlertCircle className="h-5 w-5 text-purple-600" />;
-      case "verified":
-        return <AlertCircle className="h-5 w-5 text-blue-600" />;
-      case "resolved":
-        return <CheckCircle className="h-5 w-5 text-green-600" />;
-      case "rejected":
-        return <XCircle className="h-5 w-5 text-red-600" />;
-      default:
-        return <Clock className="h-5 w-5 text-gray-600" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "submitted":
-      case "analyzing":
-        return "bg-yellow-100 text-yellow-800 border-yellow-300";
-      case "in_progress":
-        return "bg-purple-100 text-purple-800 border-purple-300";
-      case "verified":
-        return "bg-blue-100 text-blue-800 border-blue-300";
-      case "resolved":
-        return "bg-green-100 text-green-800 border-green-300";
-      case "rejected":
-        return "bg-red-100 text-red-800 border-red-300";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-300";
-    }
-  };
-
-  const filteredComplaints = complaints.filter((complaint) => {
-    const matchesSearch =
-      complaint.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      complaint.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      complaint.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (complaint.ref_id &&
-        complaint.ref_id.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesFilter =
-      filterStatus === "all" || complaint.status === filterStatus;
-    return matchesSearch && matchesFilter;
+  const filtered = complaints.filter(c => {
+    const matchesSearch = c.description.toLowerCase().includes(searchQuery.toLowerCase()) || c.id.includes(searchQuery);
+    const matchesStatus = filterStatus === "all" || c.status === filterStatus;
+    return matchesSearch && matchesStatus;
   });
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="animate-spin text-blue-600" size={32} />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-gray-100">
+      <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+      <p className="text-gray-500 font-medium">Syncing with Municipal Server...</p>
+    </div>
+  );
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">
-          Track Your Complaints
-        </h1>
-        <p className="text-gray-600">
-          Monitor real-time status updates of all your registered complaints
-        </p>
-      </div>
-      {/* Filters */}
-      <div className="mb-6 flex flex-col md:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by ID, title, or category..."
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+    <div className="space-y-8">
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="relative w-full md:w-96">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <input type="text" placeholder="Search by description or ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
-        <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Filter className="h-5 w-5 text-gray-600" />
-            <span className="text-sm font-medium text-gray-700">Filters</span>
-          </button>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <Filter className="text-gray-400" size={18} />
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm font-medium outline-none min-w-[140px]">
             <option value="all">All Status</option>
             <option value="submitted">Submitted</option>
+            <option value="analyzing">Analyzing</option>
             <option value="verified">Verified</option>
+            <option value="in_progress">In Progress</option>
             <option value="resolved">Resolved</option>
-            <option value="rejected">Rejected</option>
           </select>
+          
+          <button 
+            onClick={() => {
+              setFilterStatus("all");
+              setSearchQuery("");
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-100"
+          >
+            Clear Filters
+          </button>
         </div>
       </div>
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-700 font-medium mb-1">Submitted</p>
-          <p className="text-2xl font-bold text-yellow-800">
-            {
-              complaints.filter(
-                (c) =>
-                  c.status === "submitted" ||
-                  c.status === "analyzing" ||
-                  (c.status as string) === "pending_analysis",
-              ).length
-            }
-          </p>
-        </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-sm text-blue-700 font-medium mb-1">Verified</p>
-          <p className="text-2xl font-bold text-blue-800">
-            {complaints.filter((c) => c.status === "verified").length}
-          </p>
-        </div>
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <p className="text-sm text-green-700 font-medium mb-1">Resolved</p>
-          <p className="text-2xl font-bold text-green-800">
-            {complaints.filter((c) => c.status === "resolved").length}
-          </p>
-        </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-gray-700 font-medium mb-1">Total</p>
-          <p className="text-2xl font-bold text-gray-800">
-            {complaints.length}
-          </p>
-        </div>
-      </div>
-      {/* Complaints list */}
-      <div className="space-y-8">
-        {filteredComplaints.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-            <p className="text-gray-500">No complaints found</p>
-            {complaints.length === 0 && (
-              <p className="text-sm text-blue-600 mt-2">
-                Go to Register Complaint to file your first issue!
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-8 items-start">
-            {/* Processing Column */}
-            <div className="space-y-4">
-              <button 
-                onClick={() => setIsProcessingExpanded(!isProcessingExpanded)}
-                className="w-full flex items-center justify-between text-xl font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4 sticky top-0 bg-gray-50/80 backdrop-blur z-10 p-2 rounded-t-lg hover:bg-gray-100 transition-colors"
-              >
-                <span>Processing Complaints</span>
-                {isProcessingExpanded ? <ChevronUp className="h-6 w-6 text-gray-500" /> : <ChevronDown className="h-6 w-6 text-gray-500" />}
-              </button>
-              
-              {isProcessingExpanded && (
-                <>
-                  {filteredComplaints
-                    .filter((c) => ["submitted", "analyzing", "pending_analysis", "in_progress"].includes(c.status))
-                    .map((complaint) => (
-                  <div
-                    key={complaint.id}
-                    className="bg-white rounded-xl shadow-sm border border-orange-100/50 p-6 hover:shadow-md transition-shadow relative overflow-hidden group"
-                  >
-                    <div className="absolute top-0 left-0 w-1 h-full bg-orange-400"></div>
-                    <div className="flex flex-col gap-4">
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span
-                              className="font-mono text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded"
-                              title={complaint.id}
-                            >
-                              REF: #{complaint.ref_id || complaint.id.slice(0, 8)}
-                            </span>
-                          </div>
-                          <h3 className="font-semibold text-gray-800 mb-2">
-                            {complaint.description}
-                          </h3>
-                        </div>
-                        <div
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${getStatusColor(complaint.status)} shrink-0`}
-                        >
-                          {getStatusIcon(complaint.status)}
-                          <span className="text-xs font-bold uppercase tracking-wider">
-                            {complaint.status === "in_progress" ? "Staff Assigned" : complaint.status}
-                          </span>
-                        </div>
-                      </div>
 
-                      <div className="flex flex-wrap gap-3 text-xs text-gray-500 font-medium">
-                        <span className="bg-gray-100 px-2 py-1 rounded-md">📋 {complaint.category}</span>
-                        <span className="bg-gray-100 px-2 py-1 rounded-md">📍 {complaint.location || "No location"}</span>
-                        <span className="bg-gray-100 px-2 py-1 rounded-md">
-                          📅 {new Date(complaint.created_at).toLocaleDateString("en-IN")}
-                        </span>
-                      </div>
-
-                      <div className="pt-3 mt-1 border-t border-gray-100 flex items-center justify-between">
-                        <button
-                          onClick={() => openModal(complaint)}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:underline px-2 py-1 -ml-2 rounded-md transition-colors"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteClick(complaint.id, e)}
-                          disabled={isDeletingId === complaint.id}
-                          className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors disabled:opacity-50"
-                          title="Delete Complaint"
-                        >
-                          {isDeletingId === complaint.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              {filteredComplaints.filter((c) => ["submitted", "analyzing", "pending_analysis", "in_progress"].includes(c.status)).length === 0 && (
-                 <p className="text-gray-500 text-sm italic p-4 text-center border border-dashed border-gray-300 rounded-lg bg-gray-50">No complaints are currently processing.</p>
-              )}
-                </>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+        {/* Active Section */}
+        <section className="space-y-4">
+          <button 
+            onClick={() => setIsProcessingExpanded(!isProcessingExpanded)}
+            className="w-full text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between group"
+          >
+            <span className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-blue-500" /> 
+              Active Tracking ({filtered.filter(c => !["resolved", "rejected"].includes(c.status)).length})
+            </span>
+            {isProcessingExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          
+          {isProcessingExpanded && (
+            <div className="grid grid-cols-1 gap-6">
+              {filtered.filter(c => !["resolved", "rejected"].includes(c.status)).length > 0 ? (
+                filtered.filter(c => !["resolved", "rejected"].includes(c.status)).map(c => (
+                  <ComplaintCard key={c.id} complaint={c} onOpen={() => setSelectedComplaint(c)} onDelete={(id) => setDeleteConfirmId(id)} isDeleting={isDeletingId === c.id} />
+                ))
+              ) : (
+                <div className="bg-white rounded-2xl p-8 text-center border border-dashed border-gray-200">
+                  <p className="text-gray-400 text-sm">No active complaints matching filters.</p>
+                </div>
               )}
             </div>
+          )}
+        </section>
 
-            {/* Processed Column */}
-            <div className="space-y-4">
-              <button 
-                onClick={() => setIsProcessedExpanded(!isProcessedExpanded)}
-                className="w-full flex items-center justify-between text-xl font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4 sticky top-0 bg-gray-50/80 backdrop-blur z-10 p-2 rounded-t-lg hover:bg-gray-100 transition-colors"
-              >
-                <span>Processed Complaints</span>
-                {isProcessedExpanded ? <ChevronUp className="h-6 w-6 text-gray-500" /> : <ChevronDown className="h-6 w-6 text-gray-500" />}
-              </button>
-              
-              {isProcessedExpanded && (
-                <>
-                  {filteredComplaints
-                    .filter((c) => ["verified", "resolved", "rejected"].includes(c.status))
-                    .map((complaint) => (
-                  <div
-                    key={complaint.id}
-                    className="bg-white rounded-xl shadow-sm border border-indigo-100/50 p-6 hover:shadow-md transition-shadow relative overflow-hidden group opacity-90 hover:opacity-100"
-                  >
-                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                    <div className="flex flex-col gap-4">
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span
-                              className="font-mono text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded"
-                              title={complaint.id}
-                            >
-                              REF: #{complaint.ref_id || complaint.id.slice(0, 8)}
-                            </span>
-                          </div>
-                          <h3 className="font-semibold text-gray-800 mb-2 truncate max-w-[200px]">
-                            {complaint.description}
-                          </h3>
-                        </div>
-                        <div
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${getStatusColor(complaint.status)} shrink-0`}
-                        >
-                          {getStatusIcon(complaint.status)}
-                          <span className="text-xs font-bold uppercase tracking-wider">
-                            {complaint.status}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-3 text-xs text-gray-500 font-medium">
-                        <span className="bg-gray-100 px-2 py-1 rounded-md">📋 {complaint.category.split(" ")[0]}...</span>
-                        <span className="bg-gray-100 px-2 py-1 rounded-md">
-                          📅 {new Date(complaint.created_at).toLocaleDateString("en-IN")}
-                        </span>
-                      </div>
-
-                      <div className="pt-3 mt-1 border-t border-gray-100 flex items-center justify-between">
-                        <button
-                          onClick={() => openModal(complaint)}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:underline px-2 py-1 -ml-2 rounded-md transition-colors"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteClick(complaint.id, e)}
-                          disabled={isDeletingId === complaint.id}
-                          className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors disabled:opacity-50"
-                          title="Delete Complaint"
-                        >
-                          {isDeletingId === complaint.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              {filteredComplaints.filter((c) => ["verified", "resolved", "rejected"].includes(c.status)).length === 0 && (
-                <p className="text-gray-500 text-sm italic p-4 text-center border border-dashed border-gray-300 rounded-lg bg-gray-50">No complaints have been processed yet.</p>
-              )}
-                </>
+        {/* Resolved Section */}
+        <section className="space-y-4">
+          <button 
+            onClick={() => setIsProcessedExpanded(!isProcessedExpanded)}
+            className="w-full text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between group"
+          >
+            <span className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-500" /> 
+              Resolved History ({filtered.filter(c => ["resolved", "rejected"].includes(c.status)).length})
+            </span>
+            {isProcessedExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          
+          {isProcessedExpanded && (
+            <div className="grid grid-cols-1 gap-6">
+              {filtered.filter(c => ["resolved", "rejected"].includes(c.status)).length > 0 ? (
+                filtered.filter(c => ["resolved", "rejected"].includes(c.status)).map(c => (
+                  <ComplaintCard key={c.id} complaint={c} onOpen={() => setSelectedComplaint(c)} onDelete={(id) => setDeleteConfirmId(id)} isDeleting={isDeletingId === c.id} />
+                ))
+              ) : (
+                <div className="bg-white rounded-2xl p-8 text-center border border-dashed border-gray-200">
+                  <p className="text-gray-400 text-sm">No resolved history available.</p>
+                </div>
               )}
             </div>
-          </div>
-        )}
+          )}
+        </section>
+
       </div>
-      {/* Detail Modal */}
+
+
       {selectedComplaint && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-bold text-gray-800">
-                Complaint Details
-              </h2>
-              <button
-                onClick={() => setSelectedComplaint(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XCircle size={24} />
-              </button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h2 className="text-xl font-bold text-gray-800">Complaint Details</h2>
+              <button onClick={() => setSelectedComplaint(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><XCircle size={24} className="text-gray-400" /></button>
             </div>
-
-            <div className="p-6 space-y-6">
-              {/* ID & Status */}
-              <div className="flex flex-wrap gap-4 justify-between items-start bg-gray-50 p-4 rounded-lg">
+            <div className="p-8 overflow-y-auto space-y-8">
+              <div className="flex justify-between items-start gap-4">
                 <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">
-                    Reference ID
-                  </p>
-                  <p className="font-mono text-base font-bold text-emerald-600">
-                    {selectedComplaint.ref_id || selectedComplaint.id}
-                  </p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Tracking ID</p>
+                  <p className="font-mono text-lg font-bold text-blue-600">#{selectedComplaint.ref_id || selectedComplaint.id.slice(0,8)}</p>
                 </div>
-                <div
-                  className={`px-3 py-1 rounded text-sm font-bold capitalize ${getStatusColor(selectedComplaint.status)}`}
-                >
-                  {selectedComplaint.status}
-                </div>
+                <div className={`px-4 py-2 rounded-xl text-xs font-bold uppercase ${getStatusStyles(selectedComplaint.status)}`}>{selectedComplaint.status.replace('_', ' ')}</div>
               </div>
 
-              {/* Main Info */}
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="text-sm font-semibold text-gray-500 block mb-1">
-                    Category
-                  </label>
-                  <p className="text-gray-800">{selectedComplaint.category}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-500 block mb-1">
-                    Date Submitted
-                  </label>
-                  <p className="text-gray-800">
-                    {new Date(selectedComplaint.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-sm font-semibold text-gray-500 block mb-1">
-                    Location
-                  </label>
-                  <div className="flex items-start gap-2">
-                    <MapPin size={16} className="mt-1 text-gray-400" />
-                    <p className="text-gray-800">
-                      {selectedComplaint.location}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="text-sm font-semibold text-gray-500 block mb-1">
-                  Description
-                </label>
-                <p className="text-gray-800 text-sm leading-relaxed p-3 bg-gray-50 rounded-lg border border-gray-100">
-                  {selectedComplaint.description}
-                </p>
-              </div>
-
-              {/* Images - Real URLs from Supabase Storage */}
-              {selectedComplaint.images &&
-                selectedComplaint.images.length > 0 && (
+              {selectedComplaint.estimated_resolution && !['resolved', 'rejected'].includes(selectedComplaint.status) && (
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 flex items-start gap-4">
+                  <Clock className="w-6 h-6 text-blue-600 mt-1" />
                   <div>
-                    <label className="text-sm font-semibold text-gray-500 block mb-2">
-                      Attached Evidence
-                    </label>
-                    <div className="grid grid-cols-2 gap-4">
-                      {selectedComplaint.images.map((imgUrl, idx) => (
-                        <a
-                          key={idx}
-                          href={imgUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block relative group aspect-video overflow-hidden rounded-lg border border-gray-200"
-                        >
-                          <img
-                            src={imgUrl}
-                            alt={`Evidence ${idx + 1}`}
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                          />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                            <span className="text-white text-xs font-bold px-2 py-1 bg-black/50 rounded">
-                              View Full
-                            </span>
-                          </div>
-                        </a>
-                      ))}
-                    </div>
+                    <h3 className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-1">Estimated Resolution</h3>
+                    <p className="text-blue-900 font-bold text-lg">
+                      {new Date(selectedComplaint.estimated_resolution).toLocaleString('en-IN', {
+                        weekday: 'long',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      })}
+                    </p>
+                    <p className="text-[10px] text-blue-600 mt-1 italic">Calculated based on current workload and field team history.</p>
                   </div>
-                )}
+                </div>
+              )}
 
-              {/* Note: AI Assessment & Priority Score hidden for Citizens as requested */}
+              {selectedComplaint.resolution_proof && (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 space-y-4">
+                  <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-widest">Resolution Proof</h3>
+                  <div className="flex flex-col md:flex-row gap-6">
+                    <div className="w-full md:w-48 aspect-square rounded-xl overflow-hidden border border-emerald-200 shadow-sm">
+                      <img src={selectedComplaint.resolution_proof.image_url} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 italic text-emerald-900 text-sm leading-relaxed">"{selectedComplaint.resolution_proof.notes || 'The issue has been successfully resolved by the field team.'}"</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid md:grid-cols-2 gap-8">
+                <div>
+                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Category</h4>
+                  <p className="text-gray-900 font-medium">{selectedComplaint.category}</p>
+                </div>
+                <div>
+                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Location</h4>
+                  <p className="text-gray-900 font-medium">{selectedComplaint.location}</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Description</h4>
+                <div className="bg-gray-50 p-4 rounded-xl text-gray-700 text-sm border border-gray-100">"{selectedComplaint.description}"</div>
+              </div>
             </div>
-            <div className="p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
-              <button
-                onClick={() => setSelectedComplaint(null)}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
-              >
-                Close
-              </button>
-            </div>
+            <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end"><button onClick={() => setSelectedComplaint(null)} className="px-6 py-2 bg-white border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-100">Close</button></div>
           </div>
         </div>
       )}
-      {/* Delete Confirmation Modal */}
+
       {deleteConfirmId && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="h-8 w-8 text-red-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">Delete Complaint?</h2>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete this complaint? This action cannot be undone and will remove it permanently for both you and the administrators.
-            </p>
-            <div className="flex gap-4 justify-center">
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                disabled={isDeletingId === deleteConfirmId}
-                className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={isDeletingId === deleteConfirmId}
-                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 min-w-[120px]"
-              >
-                {isDeletingId === deleteConfirmId ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  "Delete"
-                )}
-              </button>
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center">
+            <Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Complaint?</h3>
+            <p className="text-sm text-gray-500 mb-8">This will permanently remove this record from the municipal database.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-2 bg-gray-100 rounded-lg font-bold">Cancel</button>
+              <button onClick={confirmDelete} className="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold">Delete</button>
             </div>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function ComplaintCard({ complaint, onOpen, onDelete, isDeleting }: { complaint: Complaint, onOpen: () => void, onDelete: (id: string) => void, isDeleting: boolean }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all group relative overflow-hidden">
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${complaint.status === 'resolved' ? 'bg-emerald-500' : 'bg-blue-500'}`}></div>
+      <div className="flex justify-between items-start mb-4">
+        <span className="text-[10px] font-bold bg-gray-100 px-2 py-1 rounded text-gray-500 uppercase">#{complaint.ref_id || complaint.id.slice(0,8)}</span>
+        <div className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase ${getStatusStyles(complaint.status)}`}>{complaint.status.replace('_', ' ')}</div>
+      </div>
+      <h3 className="font-bold text-gray-900 mb-2 line-clamp-1">{complaint.description}</h3>
+      <p className="text-xs text-gray-500 flex items-center gap-1 mb-6"><MapPin size={12} /> {complaint.location}</p>
+      <div className="flex items-center justify-between">
+        <button onClick={onOpen} className="text-xs font-bold text-blue-600 hover:underline">View Details {complaint.status === 'resolved' && '& Proof'}</button>
+        <button onClick={() => onDelete(complaint.id)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+      </div>
+    </div>
+  );
+}
+
+function getStatusStyles(status: string) {
+  switch (status) {
+    case "resolved": return "bg-emerald-100 text-emerald-700";
+    case "rejected": return "bg-red-100 text-red-700";
+    case "in_progress": return "bg-amber-100 text-amber-700";
+    default: return "bg-blue-100 text-blue-700";
+  }
 }

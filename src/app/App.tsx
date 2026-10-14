@@ -12,12 +12,12 @@ import { ComplaintRegistration } from "@/app/components/modules/ComplaintRegistr
 import { ComplaintTracking } from "@/app/components/modules/ComplaintTracking";
 import { BillPayment } from "@/app/components/modules/BillPayment";
 import { BillManagement } from "@/app/components/modules/BillManagement";
-import { GamificationHub } from "@/app/components/modules/GamificationHub";
 import { NotificationsPage } from "@/app/components/modules/NotificationsPage";
-import { AIAssistant } from "@/app/components/modules/AIAssistant";
+import { LawAdvisor } from "@/app/components/modules/LawAdvisor";
 import { Feedback } from "@/app/components/modules/Feedback";
 import { AdminDashboard } from "@/app/components/modules/AdminDashboard";
 import { WorkerDashboard } from "@/app/components/modules/WorkerDashboard";
+import { StaffManagement } from "@/app/components/modules/StaffManagement";
 import LoginPage from "@/app/pages/auth/LoginPage";
 import SignupPage from "@/app/pages/auth/SignupPage";
 import WorkerSignupPage from "@/app/pages/auth/WorkerSignupPage";
@@ -64,6 +64,17 @@ function ProtectedLayout() {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Role-based redirection from root or dashboard
+  const userRole = user?.user_metadata?.role || "citizen";
+  const path = window.location.pathname;
+  if ((path === "/" || path === "/dashboard") && userRole !== "citizen") {
+    if (userRole === "admin") {
+      return <Navigate to="/admin" replace />;
+    } else if (userRole === "worker") {
+      return <Navigate to="/field-dashboard" replace />;
+    }
   }
 
   return (
@@ -130,14 +141,14 @@ export default function App() {
             <Route path="complaint-tracking" element={<ComplaintTracking />} />
             <Route path="bill-payment" element={<BillPayment />} />
             <Route path="bill-management" element={<BillManagement />} />
-            <Route path="gamification" element={<GamificationHub />} />
             <Route path="notifications" element={<NotificationsPage />} />
-            <Route path="ai-assistant" element={<AIAssistant />} />
+            <Route path="law-advisor" element={<LawAdvisor />} />
             <Route path="settings" element={<SettingsPage />} />{" "}
             {/* Replaced Settings with SettingsPage */}
             <Route path="admin-settings" element={<AdminSettings />} />
             <Route path="feedback" element={<Feedback />} />
             <Route path="admin" element={<AdminDashboard />} />
+            <Route path="staff-management" element={<StaffManagement />} />
             <Route path="field-dashboard" element={<WorkerDashboard />} />
             <Route path="schemes" element={<SchemesPage />} />
           </Route>

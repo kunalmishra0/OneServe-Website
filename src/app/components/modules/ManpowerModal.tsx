@@ -7,9 +7,16 @@ import {
   Star,
   Info,
   Phone,
+  CalendarDays,
+  ListPlus,
+  ChevronDown
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { sendStaffAssignmentNotification } from "@/lib/notifications";
+import { calculateETA, ETAResult } from "@/lib/eta";
+import { getRoadDistanceKm, parsePostGisPoint } from "@/lib/geo";
+
+
 
 interface ManpowerModalProps {
   complaint: any;
@@ -43,6 +50,164 @@ export function ManpowerModal({
   const [sortBy] = useState("rating"); // rating, location
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [assignmentSuccess, setAssignmentSuccess] = useState(false);
+  
+  // Smart Routing States
+  const [scheduledDate, setScheduledDate] = useState<string>("");
+  const [bundleSuggestions, setBundleSuggestions] = useState<any[]>([]);
+  const [fetchingBundles, setFetchingBundles] = useState(false);
+  const [selectedBundleIds, setSelectedBundleIds] = useState<string[]>([]);
+  const [workerSchedule, setWorkerSchedule] = useState<any[]>([]);
+  const [fetchingSchedule, setFetchingSchedule] = useState(false);
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [viewingSuggestion, setViewingSuggestion] = useState<any | null>(null);
+  const [suggestionSortMode, setSuggestionSortMode] = useState<"distance" | "priority">("distance");
+
+
+
+  // ETA States
+  const [etaResult, setEtaResult] = useState<ETAResult | null>(null);
+  const [fetchingETA, setFetchingETA] = useState(false);
+
+
+  // Fetch bundle suggestions when date is selected
+  useEffect(() => {
+    if (!scheduledDate || !complaint?.id) {
+      setBundleSuggestions([]);
+      setSelectedBundleIds([]);
+      return;
+    }
+    
+    const fetchBundles = async () => {
+      setFetchingBundles(true);
+      try {
+        const { data, error } = await supabase.rpc('get_bundle_suggestions', {
+          p_complaint_id: complaint.id,
+          p_scheduled_date: scheduledDate
+        });
+        
+        console.log("Smart Routing RPC Result:", data, error);
+        
+        if (error) throw error;
+
+        if (data && data.success && data.suggestions) {
+          const rawSuggestions = data.suggestions || [];
+          
+          // Initial sort based on distance (default)
+          const sorted = [...rawSuggestions].sort((a: any, b: any) => a.distance_meters - b.distance_meters);
+          
+          setBundleSuggestions(sorted);
+          setSelectedBundleIds(sorted.map((s: any) => s.id));
+
+          // Fetch road distances for verification
+          const targetPoint = parsePostGisPoint(complaint.raw_location || complaint.location_coords);
+          if (targetPoint) {
+            // Process ALL suggestions for road distance
+            const suggestionsWithRoad = await Promise.all(sorted.map(async (s: any) => {
+              const suggestionPoint = parsePostGisPoint(s.location);
+              if (suggestionPoint && targetPoint) {
+                const roadKm = await getRoadDistanceKm(targetPoint.lat, targetPoint.lon, suggestionPoint.lat, suggestionPoint.lon);
+                return { ...s, roadDistanceKm: roadKm };
+              }
+              return s;
+            }));
+            
+            setBundleSuggestions(suggestionsWithRoad);
+          } else {
+            setBundleSuggestions(sorted);
+          }
+
+        } else {
+
+          setBundleSuggestions([]);
+          setSelectedBundleIds([]);
+        }
+
+      } catch (err) {
+        console.error("Error fetching bundles:", err);
+      } finally {
+        setFetchingBundles(false);
+      }
+    };
+    
+    fetchBundles();
+  }, [scheduledDate, complaint]);
+
+  // Fetch worker schedule when a staff member is selected
+  useEffect(() => {
+    if (!selectedStaff?.id) {
+      setWorkerSchedule([]);
+      return;
+    }
+
+    const fetchSchedule = async () => {
+      setFetchingSchedule(true);
+      try {
+        const { data, error } = await supabase.rpc('get_worker_schedule', {
+          p_worker_id: selectedStaff.id
+        });
+        if (error) throw error;
+        setWorkerSchedule(data || []);
+      } catch (err) {
+        console.error("Error fetching worker schedule:", err);
+      } finally {
+        setFetchingSchedule(false);
+      }
+    };
+
+    fetchSchedule();
+  }, [selectedStaff]);
+
+  // Calculate Realistic ETA when staff or date changes
+  useEffect(() => {
+    if (!selectedStaff?.id || !scheduledDate || !complaint?.location) {
+      setEtaResult(null);
+      return;
+    }
+
+    const getETA = async () => {
+      setFetchingETA(true);
+      try {
+        const { parsePostGisPoint } = await import("@/lib/geo");
+        
+        // Use raw_location which contains the PostGIS geography object
+        const targetPoint = parsePostGisPoint(complaint.raw_location || complaint.location_coords);
+        if (!targetPoint) {
+          console.warn("Could not parse complaint location for ETA:", complaint.raw_location);
+          setFetchingETA(false);
+          return;
+        }
+
+        const workerPoint = parsePostGisPoint(selectedStaff.location);
+        
+        console.log("Calculating ETA for:", {
+          worker: selectedStaff.full_name,
+          target: targetPoint,
+          workerLoc: workerPoint
+        });
+
+        const res = await calculateETA(
+          selectedStaff.id,
+          targetPoint.lat,
+          targetPoint.lon,
+          workerPoint?.lat,
+          workerPoint?.lon
+        );
+
+        
+        console.log("ETA Result:", res);
+        setEtaResult(res);
+
+      } catch (err) {
+        console.error("Failed to calculate ETA:", err);
+      } finally {
+        setFetchingETA(false);
+      }
+    };
+
+
+    getETA();
+  }, [selectedStaff, scheduledDate, complaint]);
+
 
   const handleAssign = async (staffId: string) => {
     const staff = staffList.find((s) => s.id === staffId);
@@ -59,23 +224,36 @@ export function ManpowerModal({
       else eta = "By next 2 weeks";
     }
 
-    // Call the parent handler
+    // Call the parent handler (just logs now)
     onAssign(staffId);
 
-    // Send Email Notification
-    if (complaint.citizen_email) {
-      sendStaffAssignmentNotification(
-        complaint.citizen_email,
-        complaint.ref_id || complaint.id.slice(0, 8),
-        staff.full_name,
-        staff.contact_number,
-        eta,
-        staff.role
-      );
-    }
+    try {
+      const allTaskIds = [complaint.id, ...selectedBundleIds];
+      const { error } = await supabase.rpc('assign_task_bundle', {
+        p_worker_id: staffId,
+        p_complaint_ids: allTaskIds,
+        p_scheduled_date: scheduledDate,
+        p_estimated_resolution: etaResult?.estimatedDate.toISOString() || null
+      });
+      if (error) throw error;
+      
+      // Send Email Notification
+      if (complaint.citizen_email) {
+        sendStaffAssignmentNotification(
+          complaint.citizen_email,
+          complaint.ref_id || complaint.id.slice(0, 8),
+          staff.full_name,
+          staff.contact_number,
+          etaResult?.formatted || eta,
+          staff.role
+        );
+      }
 
-    // Show success popup
-    setAssignmentSuccess(true);
+      // Show success popup
+      setAssignmentSuccess(true);
+    } catch (err: any) {
+      alert("Error assigning tasks: " + err.message);
+    }
   };
 
   // Pre-calculate role matches for better sorting and default filtering
@@ -392,6 +570,223 @@ export function ManpowerModal({
                     </p>
                   </div>
                 )}
+
+                {/* Smart Routing / Scheduling UI */}
+                <div className="bg-white border-2 border-dashed border-blue-100 p-4 rounded-xl space-y-4">
+                  <h4 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                    <CalendarDays size={16} className="text-blue-600" />
+                    Schedule Task
+                  </h4>
+
+                  {/* Worker Schedule Preview */}
+                  {workerSchedule.length > 0 && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                      <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Worker's Current Bookings</h5>
+                      <div className="flex flex-col gap-2">
+                        {workerSchedule.map((s: any, idx: number) => (
+                          <div key={idx} className="flex flex-col gap-1">
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setExpandedDate(expandedDate === s.scheduled_date ? null : s.scheduled_date);
+                              }}
+                              className="bg-white border border-gray-100 rounded px-3 py-2 flex items-center justify-between shadow-sm hover:border-blue-200 transition-colors w-full text-left"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-700">{new Date(s.scheduled_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                                <span className="text-[10px] font-medium text-gray-500">{s.task_count} task{s.task_count > 1 ? 's' : ''}</span>
+                              </div>
+                              <ChevronDown size={14} className={`text-gray-400 transition-transform ${expandedDate === s.scheduled_date ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {expandedDate === s.scheduled_date && (
+                              <div className="bg-gray-100/50 rounded-lg p-2 ml-2 space-y-1 border-l-2 border-amber-300">
+                                {s.task_titles?.map((title: string, tIdx: number) => (
+                                  <p key={tIdx} className="text-[10px] text-gray-600 truncate flex items-center gap-1">
+                                    <span className="h-1 w-1 bg-gray-400 rounded-full"></span>
+                                    {title}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                    onClick={(e) => (e.target as any).showPicker?.()}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+                  />
+
+
+                  {/* Realistic ETA Preview */}
+                  {scheduledDate && selectedStaff && (
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-[10px] font-bold text-green-700 uppercase tracking-widest">Realistic ETA Preview</h5>
+                        {etaResult && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            etaResult.confidence === 'high' ? 'bg-green-200 text-green-800' : 
+                            etaResult.confidence === 'medium' ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-800'
+                          }`}>
+                            {etaResult.confidence} Confidence
+                          </span>
+                        )}
+                      </div>
+                      
+                      {fetchingETA ? (
+                        <div className="flex items-center gap-2 text-xs text-green-600 animate-pulse">
+                          <Info size={14} /> Computing workload & travel time...
+                        </div>
+                      ) : etaResult ? (
+                        <div className="space-y-2">
+                          <p className="text-sm font-bold text-gray-800 leading-tight">
+                            {etaResult.formatted}
+                          </p>
+                          <div className="grid grid-cols-3 gap-1 pt-1">
+                            <div className="text-center">
+                              <p className="text-[8px] text-gray-400 uppercase">Queue</p>
+                              <p className="text-xs font-bold text-gray-700">+{etaResult.breakdown.queueDelayMinutes}m</p>
+                            </div>
+                            <div className="text-center border-x border-green-100">
+                              <p className="text-[8px] text-gray-400 uppercase">Travel</p>
+                              <p className="text-xs font-bold text-gray-700">+{etaResult.breakdown.travelOffsetMinutes}m</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[8px] text-gray-400 uppercase">Avg Task</p>
+                              <p className="text-xs font-bold text-gray-700">{etaResult.breakdown.avgCompletionMinutes}m</p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500 italic">Enter date to calculate ETA</p>
+                      )}
+                    </div>
+                  )}
+                                    {scheduledDate && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-bold text-blue-800 flex items-center gap-2">
+                          <ListPlus size={14} /> Smart Routing
+                        </h5>
+                        <div className="flex bg-blue-100 p-0.5 rounded-md border border-blue-200">
+                          <button 
+                            onClick={() => setSuggestionSortMode("distance")}
+                            className={`px-2 py-0.5 text-[9px] font-bold rounded transition-all ${suggestionSortMode === 'distance' ? 'bg-white text-blue-600 shadow-sm' : 'text-blue-400'}`}
+                          >
+                            Distance
+                          </button>
+                          <button 
+                            onClick={() => setSuggestionSortMode("priority")}
+                            className={`px-2 py-0.5 text-[9px] font-bold rounded transition-all ${suggestionSortMode === 'priority' ? 'bg-white text-blue-600 shadow-sm' : 'text-blue-400'}`}
+                          >
+                            Priority
+                          </button>
+                        </div>
+                      </div>
+
+                      
+                      {fetchingBundles ? (
+                        <p className="text-xs text-blue-600 animate-pulse">Scanning for nearby tasks within 10KM...</p>
+                      ) : bundleSuggestions.length > 0 ? (
+                        <>
+                          <p className="text-xs text-blue-600 leading-tight mb-2">
+                            Found {bundleSuggestions.length} other unassigned {complaint.category} task{bundleSuggestions.length > 1 ? 's' : ''} nearby.
+                          </p>
+
+                          <div className="space-y-1 max-h-32 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-blue-200">
+                            {[...bundleSuggestions].sort((a, b) => {
+                              if (suggestionSortMode === 'priority') {
+                                const weights = { critical: 4, high: 3, medium: 2, low: 1 };
+                                const weightA = weights[a.priority_level as keyof typeof weights] || 0;
+                                const weightB = weights[b.priority_level as keyof typeof weights] || 0;
+                                
+                                // If priorities are the same, sort by distance (closest first)
+                                if (weightA === weightB) {
+                                  return (a.roadDistanceKm || a.distance_meters / 1000) - (b.roadDistanceKm || b.distance_meters / 1000);
+                                }
+                                // Otherwise sort by priority descending
+                                return weightB - weightA;
+                              }
+                              // Default Distance sort
+                              return (a.roadDistanceKm || a.distance_meters / 1000) - (b.roadDistanceKm || b.distance_meters / 1000);
+                            }).map((s: any) => (
+
+                              <label key={s.id} className="flex items-start gap-2 text-xs bg-white p-2 rounded shadow-sm border border-blue-100 cursor-pointer hover:bg-blue-50">
+
+                                <input 
+                                  type="checkbox" 
+                                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
+                                  checked={selectedBundleIds.includes(s.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedBundleIds([...selectedBundleIds, s.id]);
+                                    } else {
+                                      setSelectedBundleIds(selectedBundleIds.filter(id => id !== s.id));
+                                    }
+                                  }}
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-semibold text-gray-800 line-clamp-1">{s.title}</p>
+                                      {s.priority_level && (
+                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest ${
+                                          s.priority_level === 'critical' ? 'bg-red-100 text-red-600' :
+                                          s.priority_level === 'high' ? 'bg-orange-100 text-orange-600' :
+                                          'bg-blue-100 text-blue-600'
+                                        }`}>
+                                          {s.priority_level}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button 
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setViewingSuggestion(s);
+                                      }}
+                                      className="p-1 hover:bg-blue-100 rounded-full text-blue-500 transition-colors"
+                                    >
+                                      <Info size={14} />
+                                    </button>
+                                  </div>
+                                  <p className="text-gray-500 text-[10px] flex items-center gap-1">
+                                    <span>{(s.distance_meters / 1000).toFixed(2)} KM (Straight)</span>
+                                    {s.roadDistanceKm ? (
+                                      <>
+                                        <span className="text-blue-400">→</span>
+                                        <span className="text-blue-600 font-bold">{s.roadDistanceKm.toFixed(2)} KM (Road)</span>
+                                      </>
+                                    ) : null}
+                                  </p>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="py-4 text-center">
+                          <p className="text-xs text-gray-400 italic">No other unassigned {complaint.category} tasks found within 10KM.</p>
+                          <p className="text-[9px] text-gray-300 mt-1 uppercase font-mono">
+                            Searching: {complaint.category} | ID: {complaint.id.slice(0, 8)}
+                          </p>
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 text-center">
@@ -407,18 +802,93 @@ export function ManpowerModal({
 
           <div className="p-6 border-t border-gray-100 bg-gray-50">
             <button
-              disabled={!selectedStaff}
+              disabled={!selectedStaff || !scheduledDate}
               onClick={() => selectedStaff && handleAssign(selectedStaff.id)}
               className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2"
             >
               <CheckCircle size={18} />
-              {selectedStaff?.status === "busy"
-                ? "Queue Assignment"
-                : "Confirm Assignment"}
+              {!scheduledDate 
+                ? "Select a Date First" 
+                : selectedStaff?.status === "busy"
+                  ? `Queue Assignment (${1 + selectedBundleIds.length} tasks)`
+                  : `Confirm Assignment (${1 + selectedBundleIds.length} tasks)`}
             </button>
           </div>
         </div>
       </div>
+      {/* Suggestion Detail Overlay */}
+      {viewingSuggestion && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[80] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200 border border-blue-100">
+            {/* Image Header */}
+            <div className="h-48 bg-gray-100 relative group overflow-hidden">
+              {viewingSuggestion.image_url ? (
+                <img 
+                  src={viewingSuggestion.image_url} 
+                  alt={viewingSuggestion.title}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                  <Briefcase size={48} className="mb-2 opacity-20" />
+                  <span className="text-xs uppercase font-bold tracking-widest">No Image Attached</span>
+                </div>
+              )}
+              <div className="absolute top-4 left-4 flex gap-2">
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-widest shadow-lg ${
+                  viewingSuggestion.priority_level === 'critical' ? 'bg-red-600 text-white' :
+                  viewingSuggestion.priority_level === 'high' ? 'bg-orange-600 text-white' :
+                  'bg-blue-600 text-white'
+                }`}>
+                  {viewingSuggestion.priority_level} Priority
+                </span>
+              </div>
+              <button 
+                onClick={() => setViewingSuggestion(null)}
+                className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full text-white transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{viewingSuggestion.category}</span>
+                <h3 className="text-xl font-bold text-gray-900 mt-1">{viewingSuggestion.title}</h3>
+                <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1 uppercase font-bold tracking-tight">
+                  <CalendarDays size={10} /> Submitted on {new Date(viewingSuggestion.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+              </div>
+              
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Detailed Description</p>
+                <p className="text-sm text-gray-700 leading-relaxed max-h-32 overflow-y-auto scrollbar-thin">
+                  {viewingSuggestion.description || "No detailed description provided for this complaint."}
+                </p>
+              </div>
+              
+              <div className="flex items-center justify-between text-sm text-gray-500">
+                <div className="flex items-center gap-2">
+                  <MapPin size={16} className="text-blue-500" />
+                  <span>{(viewingSuggestion.distance_meters / 1000).toFixed(2)} KM from target</span>
+                </div>
+                <span className="font-mono text-[10px] bg-gray-100 px-2 py-1 rounded">ID: {viewingSuggestion.id.slice(0, 8)}</span>
+              </div>
+            </div>
+
+            <div className="p-6 pt-0">
+              <button
+                onClick={() => setViewingSuggestion(null)}
+                className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+

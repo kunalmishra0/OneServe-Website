@@ -52,6 +52,79 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
+// Razorpay Payment Gateway integration
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+
+app.post('/api/razorpay/create-order', async (req, res) => {
+  try {
+    const key_id = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID;
+    const key_secret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!key_id || !key_secret) {
+      return res.status(400).json({
+        success: false,
+        error: 'Razorpay keys not set. Please add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your .env file.',
+      });
+    }
+
+    const { amount, currency = 'INR', receipt, notes } = req.body;
+    if (!amount) {
+      return res.status(400).json({ success: false, error: 'Amount is required' });
+    }
+
+    const razorpay = new Razorpay({
+      key_id,
+      key_secret,
+    });
+
+    const options = {
+      amount: Math.round(Number(amount) * 100), // convert rupees to paise
+      currency,
+      receipt: receipt || `rcpt_${Date.now()}`,
+      notes: notes || {},
+    };
+
+    const order = await razorpay.orders.create(options);
+    res.status(200).json({
+      success: true,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: key_id,
+    });
+  } catch (error) {
+    console.error('Error creating Razorpay order:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/razorpay/verify-payment', async (req, res) => {
+  try {
+    const key_secret = process.env.RAZORPAY_KEY_SECRET;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ success: false, error: 'Missing payment verification parameters' });
+    }
+
+    const hmac = crypto.createHmac('sha256', key_secret || '');
+    hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+    const generated_signature = hmac.digest('hex');
+
+    if (generated_signature === razorpay_signature) {
+      console.log('Payment verified successfully for payment_id:', razorpay_payment_id);
+      res.status(200).json({ success: true, verified: true, paymentId: razorpay_payment_id });
+    } else {
+      console.warn('Payment signature mismatch');
+      res.status(400).json({ success: false, verified: false, error: 'Signature verification failed' });
+    }
+  } catch (error) {
+    console.error('Error verifying payment:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Please ensure EMAIL_USER and EMAIL_PASS are set in your .env file.`);

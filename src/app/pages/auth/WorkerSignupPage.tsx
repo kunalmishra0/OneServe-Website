@@ -35,7 +35,8 @@ export default function WorkerSignupPage() {
         .single();
 
       if (staffError || !staffData) {
-        throw new Error("Invalid invite code. Please check with your administrator.");
+        console.error("Invite code check failed:", staffError);
+        throw new Error("Invalid invite code. Please check with your administrator. " + (staffError?.message || ""));
       }
 
       if (staffData.auth_user_id) {

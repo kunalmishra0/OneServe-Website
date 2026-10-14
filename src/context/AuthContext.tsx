@@ -139,14 +139,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(data as UserProfile);
           
           if (data.role === 'worker') {
-             const { data: staffData } = await supabase
-               .from('staff')
-               .select('*')
-               .eq('auth_user_id', userId)
-               .single();
-             if (staffData) {
-               setStaffProfile(staffData);
-             }
+            const { data: staffData } = await supabase
+              .from('staff')
+              .select('*')
+              .eq('auth_user_id', userId)
+              .single();
+            if (staffData) {
+              setStaffProfile(staffData);
+            }
           }
         }
       } catch (err: any) {
@@ -166,6 +166,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [user?.id]); // Only re-run when user ID changes
+
+  // 3. Real-time staff updates listener
+  useEffect(() => {
+    if (profile?.role === 'worker' && staffProfile?.id) {
+      const channel = supabase
+        .channel(`staff_changes_${staffProfile.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'staff',
+            filter: `id=eq.${staffProfile.id}`
+          },
+          (payload) => {
+            console.log('Real-time staff update:', payload.new);
+            setStaffProfile(payload.new);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [profile?.role, staffProfile?.id]);
 
   const signOut = async () => {
     await supabase.auth.signOut();

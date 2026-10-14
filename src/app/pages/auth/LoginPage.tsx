@@ -92,6 +92,8 @@ export default function LoginPage() {
         // 5. Success: Redirect based on role
         if (actualRole === "admin") {
           navigate("/admin");
+        } else if (actualRole === "worker") {
+          navigate("/field-dashboard");
         } else {
           navigate("/dashboard");
         }
@@ -239,25 +241,31 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-8 text-center text-sm text-gray-600 flex flex-col gap-2">
-            <p>
-              Citizen without an account?{" "}
-              <Link
-                to="/signup"
-                className="text-blue-600 hover:text-blue-800 font-semibold hover:underline"
-              >
-                Sign up
-              </Link>
-            </p>
-            <p>
-              Field worker with an invite code?{" "}
-              <Link
-                to="/worker-signup"
-                className="text-blue-600 hover:text-blue-800 font-semibold hover:underline"
-              >
-                Register here
-              </Link>
-            </p>
+            {role === "citizen" && (
+              <p>
+                Citizen without an account?{" "}
+                <Link
+                  to="/signup"
+                  className="text-blue-600 hover:text-blue-800 font-semibold hover:underline"
+                >
+                  Sign up
+                </Link>
+              </p>
+            )}
+            
+            {role === "worker" && (
+              <p>
+                Field worker with an invite code?{" "}
+                <Link
+                  to="/worker-signup"
+                  className="text-blue-600 hover:text-blue-800 font-semibold hover:underline"
+                >
+                  Register here
+                </Link>
+              </p>
+            )}
           </div>
+        </div>
       </div>
     </div>
   );
