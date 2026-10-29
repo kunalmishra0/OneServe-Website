@@ -15,7 +15,6 @@ import { JustificationModal, LawItem } from "./JustificationModal";
 
 const API_URL =
   (import.meta as any).env?.VITE_LEGAL_API_URL ||
-  (import.meta as any).env?.VITE_API_URL ||
   "https://kapooryashas-legal-expert-backend.hf.space";
 
 export const LegalChatbot: React.FC = () => {

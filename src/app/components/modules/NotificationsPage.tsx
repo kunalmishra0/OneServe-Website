@@ -1,264 +1,322 @@
-import { AlertTriangle, Bell, CheckCircle, Info, Megaphone, X } from 'lucide-react';
-import { useState } from 'react';
+import {
+  AlertTriangle,
+  Bell,
+  CheckCircle,
+  Clock,
+  Info,
+  ShieldAlert,
+  Trash2,
+  Check,
+  Search,
+  Filter
+} from "lucide-react";
+import { useState } from "react";
 
-interface Notification {
+export interface NotificationItem {
   id: string;
-  type: 'emergency' | 'alert' | 'info' | 'success';
+  type: "emergency" | "alert" | "info" | "success";
   title: string;
   message: string;
   time: string;
   read: boolean;
-  category: string;
+  category: "Water" | "Complaints" | "Bills" | "Civic Works" | "Advisory";
+  referenceId?: string;
 }
 
-export function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      type: 'emergency',
-      title: 'Water Supply Disruption',
-      message: 'Water supply will be interrupted in your area from 10 AM to 2 PM today for maintenance work.',
-      time: '2 hours ago',
-      read: false,
-      category: 'Water'
-    },
-    {
-      id: '2',
-      type: 'success',
-      title: 'Complaint Resolved',
-      message: 'Your complaint #CMP1002 regarding garbage collection has been marked as resolved.',
-      time: '5 hours ago',
-      read: false,
-      category: 'Complaints'
-    },
-    {
-      id: '3',
-      type: 'alert',
-      title: 'Bill Payment Due',
-      message: 'Your electricity bill of ₹2,450 is due in 3 days. Pay now to avoid late fees.',
-      time: '1 day ago',
-      read: false,
-      category: 'Bills'
-    },
-    {
-      id: '5',
-      type: 'alert',
-      title: 'Road Closure',
-      message: 'MG Road will be closed for repairs from Jan 24-26. Plan alternate routes.',
-      time: '2 days ago',
-      read: true,
-      category: 'Traffic'
-    },
-  ]);
+const INITIAL_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: "notif-1",
+    type: "emergency",
+    title: "Urgent: Water Line Maintenance",
+    message: "Volumetric boosting pipeline undergoing scheduled valve replacement. Low water pressure expected between 10:00 AM and 02:00 PM today.",
+    time: "45 mins ago",
+    read: false,
+    category: "Water",
+    referenceId: "WTR-MAINT-401",
+  },
+  {
+    id: "notif-2",
+    type: "success",
+    title: "Complaint #OS-FBD-2026-01 Assigned",
+    message: "Technician Amit Verma has been dispatched for road repair near Sector 16. Estimated arrival today within shift hours.",
+    time: "2 hours ago",
+    read: false,
+    category: "Complaints",
+    referenceId: "OS-FBD-2026-01",
+  },
+  {
+    id: "notif-3",
+    type: "alert",
+    title: "Upcoming Bill Due Date",
+    message: "Electricity utility bill #ELEC-2026-0418 of ₹1,840 is due on 20 Apr 2026. Settle early to avoid standard surcharge.",
+    time: "1 day ago",
+    read: false,
+    category: "Bills",
+    referenceId: "ELEC-2026-0418",
+  },
+  {
+    id: "notif-4",
+    type: "info",
+    title: "Civic Road Surface Upgrade",
+    message: "Carpeting work initiated along the main marketplace connecting road. One-way traffic diversion active till Wednesday.",
+    time: "2 days ago",
+    read: true,
+    category: "Civic Works",
+  },
+  {
+    id: "notif-5",
+    type: "success",
+    title: "Payment Receipt Acknowledged",
+    message: "Your payment of ₹860 for City Gas bill #PNG-2026-1029 was processed successfully. Official voucher generated.",
+    time: "4 days ago",
+    read: true,
+    category: "Bills",
+    referenceId: "RCPT-982140",
+  },
+];
 
-  const [filterType, setFilterType] = useState<'all' | 'unread'>('all');
+export function NotificationsPage() {
+  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [filterType, setFilterType] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markAsRead = (id: string) => {
-    setNotifications(notifications.map(notif => 
-      notif.id === id ? { ...notif, read: true } : notif
-    ));
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
   };
 
   const markAllAsRead = () => {
-    setNotifications(notifications.map(notif => ({ ...notif, read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   const deleteNotification = (id: string) => {
-    setNotifications(notifications.filter(notif => notif.id !== id));
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  const getNotificationIcon = (type: string) => {
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const filteredNotifications = notifications.filter((n) => {
+    const matchesFilter =
+      filterType === "all"
+        ? true
+        : filterType === "unread"
+        ? !n.read
+        : n.type === filterType;
+
+    const matchesSearch =
+      n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      n.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      n.category.toLowerCase().includes(searchQuery.toLowerCase());
+
+    return matchesFilter && matchesSearch;
+  });
+
+  const getTypeMeta = (type: NotificationItem["type"]) => {
     switch (type) {
-      case 'emergency':
-        return <AlertTriangle className="h-6 w-6 text-red-600" />;
-      case 'alert':
-        return <Bell className="h-6 w-6 text-yellow-600" />;
-      case 'success':
-        return <CheckCircle className="h-6 w-6 text-green-600" />;
-      case 'info':
-        return <Info className="h-6 w-6 text-blue-600" />;
+      case "emergency":
+        return {
+          icon: ShieldAlert,
+          iconColor: "text-red-600",
+          bgColor: "bg-red-50",
+          borderColor: "border-red-200",
+          tagBg: "bg-red-100 text-red-800",
+        };
+      case "alert":
+        return {
+          icon: AlertTriangle,
+          iconColor: "text-amber-600",
+          bgColor: "bg-amber-50",
+          borderColor: "border-amber-200",
+          tagBg: "bg-amber-100 text-amber-800",
+        };
+      case "success":
+        return {
+          icon: CheckCircle,
+          iconColor: "text-emerald-600",
+          bgColor: "bg-emerald-50",
+          borderColor: "border-emerald-200",
+          tagBg: "bg-emerald-100 text-emerald-800",
+        };
+      case "info":
       default:
-        return <Bell className="h-6 w-6 text-gray-600" />;
+        return {
+          icon: Info,
+          iconColor: "text-blue-600",
+          bgColor: "bg-blue-50",
+          borderColor: "border-blue-200",
+          tagBg: "bg-blue-100 text-blue-800",
+        };
     }
   };
-
-  const getNotificationBgColor = (type: string) => {
-    switch (type) {
-      case 'emergency':
-        return 'bg-red-50 border-red-200';
-      case 'alert':
-        return 'bg-yellow-50 border-yellow-200';
-      case 'success':
-        return 'bg-green-50 border-green-200';
-      case 'info':
-        return 'bg-blue-50 border-blue-200';
-      default:
-        return 'bg-gray-50 border-gray-200';
-    }
-  };
-
-  const filteredNotifications = filterType === 'all' 
-    ? notifications 
-    : notifications.filter(n => !n.read);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">
-          Notifications
-        </h1>
-        <p className="text-gray-600">
-          Stay updated with emergency alerts, bill reminders, and community announcements
-        </p>
-      </div>
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
+              Notifications
+            </h1>
+            {unreadCount > 0 && (
+              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                {unreadCount} unread
+              </span>
+            )}
+          </div>
+          <p className="text-gray-600 mt-1">
+            Real-time civic alerts, complaint progress, and utility advisories
+          </p>
+        </div>
 
-      {/* Stats and filters */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="bg-blue-100 p-3 rounded-lg">
-              <Bell className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-800">{notifications.length}</p>
-              <p className="text-sm text-gray-600">Total Notifications</p>
-            </div>
-            {unreadCount > 0 && (
-              <div className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                {unreadCount} Unread
-              </div>
-            )}
-          </div>
-          <div className="flex gap-3">
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as 'all' | 'unread')}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        {/* Global Actions */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {unreadCount > 0 && (
+            <button
+              onClick={markAllAsRead}
+              className="px-3 py-1.5 text-xs font-medium bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
             >
-              <option value="all">All Notifications</option>
-              <option value="unread">Unread Only</option>
-            </select>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-              >
-                Mark All Read
-              </button>
-            )}
-          </div>
+              <Check className="w-3.5 h-3.5 text-blue-600" />
+              Mark all as read
+            </button>
+          )}
+          {notifications.length > 0 && (
+            <button
+              onClick={clearAllNotifications}
+              className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Clear all
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Emergency broadcast banner */}
-      <div className="bg-gradient-to-r from-red-600 to-orange-600 rounded-lg p-6 mb-6 text-white shadow-lg">
-        <div className="flex items-start gap-4">
-          <div className="bg-white bg-opacity-20 p-3 rounded-lg">
-            <Megaphone className="h-8 w-8" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-xl font-bold mb-2">Emergency Broadcast System</h3>
-            <p className="text-red-100">
-              Critical alerts and emergency announcements will appear here. Make sure to enable notifications to stay safe.
-            </p>
-          </div>
+      {/* Filter and Search Bar */}
+      <div className="bg-white border border-gray-200 rounded-xl p-3.5 shadow-xs mb-6 flex flex-col md:flex-row items-center justify-between gap-3">
+        {/* Search Input */}
+        <div className="relative w-full md:max-w-xs">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search notifications..."
+            className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+          />
         </div>
-      </div>
 
-      {/* Notifications list */}
-      <div className="space-y-3">
-        {filteredNotifications.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-            <Bell className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No notifications to display</p>
-          </div>
-        ) : (
-          filteredNotifications.map((notification) => (
-            <div
-              key={notification.id}
-              className={`
-                bg-white rounded-lg shadow-sm border-2 p-6 transition-all
-                ${!notification.read ? 'border-blue-500' : 'border-gray-200'}
-              `}
-            >
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-lg ${getNotificationBgColor(notification.type).split(' ')[0]}`}>
-                  {getNotificationIcon(notification.type)}
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-gray-800">
-                        {notification.title}
-                      </h3>
-                      {!notification.read && (
-                        <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-semibold">
-                          NEW
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                        {notification.category}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => deleteNotification(notification.id)}
-                      className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-                  
-                  <p className="text-gray-700 mb-3 leading-relaxed">
-                    {notification.message}
-                  </p>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">{notification.time}</span>
-                    {!notification.read && (
-                      <button
-                        onClick={() => markAsRead(notification.id)}
-                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        Mark as read
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Notification preferences */}
-      <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Notification Preferences</h2>
-        <div className="space-y-3">
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto">
           {[
-            { label: 'Emergency Alerts', description: 'Critical announcements and emergency broadcasts', enabled: true },
-            { label: 'Complaint Updates', description: 'Status updates on your complaints', enabled: true },
-            { label: 'Bill Reminders', description: 'Due date reminders for utility bills', enabled: true },
-            { label: 'Rewards & Badges', description: 'Gamification achievements', enabled: false },
-          ].map((pref, index) => (
-            <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div className="flex-1">
-                <p className="font-semibold text-gray-800">{pref.label}</p>
-                <p className="text-sm text-gray-600">{pref.description}</p>
-              </div>
-              <label className="relative inline-block w-12 h-6">
-                <input
-                  type="checkbox"
-                  defaultChecked={pref.enabled}
-                  className="sr-only peer"
-                />
-                <div className="w-12 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
+            { id: "all", label: "All" },
+            { id: "unread", label: `Unread (${unreadCount})` },
+            { id: "emergency", label: "Urgent" },
+            { id: "alert", label: "Alerts" },
+            { id: "success", label: "Updates" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setFilterType(tab.id)}
+              className={`px-3 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-all ${
+                filterType === tab.id
+                  ? "bg-gray-800 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              {tab.label}
+            </button>
           ))}
         </div>
+      </div>
+
+      {/* Notification Cards List */}
+      <div className="space-y-3">
+        {filteredNotifications.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500">
+            <Bell className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="font-semibold text-sm text-gray-700">No notifications found</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              You are all caught up with announcements and alerts.
+            </p>
+          </div>
+        ) : (
+          filteredNotifications.map((notif) => {
+            const meta = getTypeMeta(notif.type);
+            const Icon = meta.icon;
+
+            return (
+              <div
+                key={notif.id}
+                onClick={() => markAsRead(notif.id)}
+                className={`relative bg-white border rounded-xl p-4 transition-all duration-150 cursor-pointer ${
+                  !notif.read
+                    ? "border-blue-300 ring-1 ring-blue-100 shadow-xs"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`p-2 rounded-lg border shrink-0 mt-0.5 ${meta.bgColor} ${meta.borderColor}`}
+                    >
+                      <Icon className={`w-4 h-4 ${meta.iconColor}`} />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${meta.tagBg}`}>
+                          {notif.category}
+                        </span>
+                        {notif.referenceId && (
+                          <span className="text-[10px] font-mono text-gray-400">
+                            Ref: {notif.referenceId}
+                          </span>
+                        )}
+                        {!notif.read && (
+                          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                        )}
+                      </div>
+
+                      <h3
+                        className={`text-sm mt-1 ${
+                          !notif.read ? "font-bold text-gray-900" : "font-medium text-gray-800"
+                        }`}
+                      >
+                        {notif.title}
+                      </h3>
+                      <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                        {notif.message}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end shrink-0 gap-2">
+                    <span className="text-[11px] text-gray-400 font-medium flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {notif.time}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteNotification(notif.id);
+                      }}
+                      className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
+                      title="Dismiss"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

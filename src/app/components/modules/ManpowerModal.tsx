@@ -96,7 +96,7 @@ export function ManpowerModal({
           const sorted = [...rawSuggestions].sort((a: any, b: any) => a.distance_meters - b.distance_meters);
           
           setBundleSuggestions(sorted);
-          setSelectedBundleIds(sorted.map((s: any) => s.id));
+          setSelectedBundleIds([]); // None selected by default, admin picks and chooses
 
           // Fetch road distances for verification
           const targetPoint = parsePostGisPoint(complaint.raw_location || complaint.location_coords);

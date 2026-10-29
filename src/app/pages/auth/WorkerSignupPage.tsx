@@ -111,7 +111,7 @@ export default function WorkerSignupPage() {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
         <div className="bg-blue-800 p-8 text-center text-white relative flex flex-col items-center">
           <div className="absolute top-4 left-4">
-               <Link to="/" className="text-blue-200 hover:text-white transition-colors text-sm font-medium">← Back</Link>
+               <Link to="/login" className="text-blue-200 hover:text-white transition-colors text-sm font-medium">← Back</Link>
           </div>
           <div className="mb-4">
             <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center border border-white/20 shadow-inner">

@@ -298,6 +298,19 @@ export function ComplaintTracking() {
                 </div>
               </div>
 
+              {selectedComplaint.images && selectedComplaint.images.length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Initial Complaint Photos (Filing Evidence)</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {selectedComplaint.images.map((img, i) => (
+                      <div key={i} className="aspect-video rounded-xl overflow-hidden border border-gray-200 bg-gray-100 shadow-xs">
+                        <img src={img} alt="Initial complaint photo" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Description</h4>
                 <div className="bg-gray-50 p-4 rounded-xl text-gray-700 text-sm border border-gray-100">"{selectedComplaint.description}"</div>
@@ -334,7 +347,19 @@ function ComplaintCard({ complaint, onOpen, onDelete, isDeleting }: { complaint:
         <div className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase ${getStatusStyles(complaint.status)}`}>{complaint.status.replace('_', ' ')}</div>
       </div>
       <h3 className="font-bold text-gray-900 mb-2 line-clamp-1">{complaint.description}</h3>
-      <p className="text-xs text-gray-500 flex items-center gap-1 mb-6"><MapPin size={12} /> {complaint.location}</p>
+      <p className="text-xs text-gray-500 flex items-center gap-1 mb-4"><MapPin size={12} /> {complaint.location}</p>
+      {complaint.images && complaint.images.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Submitted Photo</p>
+          <div className="flex gap-2">
+            {complaint.images.slice(0, 3).map((img, i) => (
+              <div key={i} className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shrink-0 shadow-xs">
+                <img src={img} alt="Submitted complaint photo" className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <button onClick={onOpen} className="text-xs font-bold text-blue-600 hover:underline">View Details {complaint.status === 'resolved' && '& Proof'}</button>
         <button onClick={() => onDelete(complaint.id)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>

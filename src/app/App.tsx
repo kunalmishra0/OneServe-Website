@@ -25,26 +25,21 @@ import VerifyPage from "@/app/pages/auth/VerifyPage";
 import ForgotPasswordPage from "@/app/pages/auth/ForgotPasswordPage";
 import SettingsPage from "@/app/pages/SettingsPage";
 import { AdminSettings } from "@/app/pages/admin/AdminSettings";
+import WorkerSettings from "@/app/pages/worker/WorkerSettings";
 import { SchemesPage } from "@/app/pages/SchemesPage";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { RoleRoute } from "@/app/components/auth/RoleRoute";
 import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
 function ProtectedLayout() {
-  const { user, isLoading } = useAuth();
-  // Initialize from props or default to closed on mobile, open on desktop
+  const { user, role, isLoading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(
     () => window.innerWidth >= 1024,
   );
 
-  // Close sidebar on route change (mobile mostly)
   useEffect(() => {
-    // Only close on mobile (check width)
     const handleResize = () => {
-      // If window shrinks below 1024, force close.
-      // If it grows above 1024, we don't necessarily force open, we respect the user's choice,
-      // UNLESS it was previously closed purely because of size.
-      // For simplicity in this fix, we just ensure it closes when going to mobile.
       if (window.innerWidth < 1024) {
         setSidebarOpen(false);
       }
@@ -66,13 +61,13 @@ function ProtectedLayout() {
     return <Navigate to="/login" replace />;
   }
 
-  // Role-based redirection from root or dashboard
-  const userRole = user?.user_metadata?.role || "citizen";
+  // Dynamic Root Redirect based on role
+  const effectiveRole = role || user?.user_metadata?.role || "citizen";
   const path = window.location.pathname;
-  if ((path === "/" || path === "/dashboard") && userRole !== "citizen") {
-    if (userRole === "admin") {
+  if ((path === "/" || path === "/dashboard") && effectiveRole !== "citizen") {
+    if (effectiveRole === "admin") {
       return <Navigate to="/admin" replace />;
-    } else if (userRole === "worker") {
+    } else if (effectiveRole === "worker") {
       return <Navigate to="/field-dashboard" replace />;
     }
   }
@@ -120,6 +115,14 @@ function ProtectedLayout() {
   );
 }
 
+function RoleDefaultRedirect() {
+  const { user, role } = useAuth();
+  const effectiveRole = role || user?.user_metadata?.role || "citizen";
+  if (effectiveRole === "admin") return <Navigate to="/admin" replace />;
+  if (effectiveRole === "worker") return <Navigate to="/field-dashboard" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -132,25 +135,46 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
           <Route path="/" element={<ProtectedLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route
-              path="complaint-registration"
-              element={<ComplaintRegistration />}
-            />
-            <Route path="complaint-tracking" element={<ComplaintTracking />} />
-            <Route path="bill-payment" element={<BillPayment />} />
-            <Route path="bill-management" element={<BillManagement />} />
+            <Route index element={<RoleDefaultRedirect />} />
+
+            {/* Common Authenticated Routes */}
             <Route path="notifications" element={<NotificationsPage />} />
-            <Route path="law-advisor" element={<LawAdvisor />} />
-            <Route path="settings" element={<SettingsPage />} />{" "}
-            {/* Replaced Settings with SettingsPage */}
-            <Route path="admin-settings" element={<AdminSettings />} />
-            <Route path="feedback" element={<Feedback />} />
-            <Route path="admin" element={<AdminDashboard />} />
-            <Route path="staff-management" element={<StaffManagement />} />
-            <Route path="field-dashboard" element={<WorkerDashboard />} />
-            <Route path="schemes" element={<SchemesPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+
+            {/* Citizen Only Routes */}
+            <Route element={<RoleRoute allowedRoles={["citizen"]} />}>
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route
+                path="complaint-registration"
+                element={<ComplaintRegistration />}
+              />
+              <Route path="bill-payment" element={<BillPayment />} />
+              <Route path="bill-management" element={<BillManagement />} />
+              <Route path="law-advisor" element={<LawAdvisor />} />
+              <Route path="feedback" element={<Feedback />} />
+              <Route path="schemes" element={<SchemesPage />} />
+            </Route>
+
+            {/* Citizen Only Complaint Tracking */}
+            <Route element={<RoleRoute allowedRoles={["citizen"]} />}>
+              <Route path="complaint-tracking" element={<ComplaintTracking />} />
+            </Route>
+
+            {/* Admin Only Routes */}
+            <Route element={<RoleRoute allowedRoles={["admin"]} />}>
+              <Route path="admin" element={<AdminDashboard />} />
+              <Route path="staff-management" element={<StaffManagement />} />
+              <Route path="admin-settings" element={<AdminSettings />} />
+            </Route>
+
+            {/* Worker Only Routes */}
+            <Route element={<RoleRoute allowedRoles={["worker"]} />}>
+              <Route path="field-dashboard" element={<WorkerDashboard />} />
+              <Route path="worker-settings" element={<WorkerSettings />} />
+            </Route>
+
+            {/* Fallback to role-specific home */}
+            <Route path="*" element={<RoleDefaultRedirect />} />
           </Route>
         </Routes>
       </BrowserRouter>

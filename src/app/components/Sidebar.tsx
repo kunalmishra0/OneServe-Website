@@ -3,10 +3,7 @@ import {
   MessageSquareWarning,
   ClipboardList,
   CreditCard,
-  FolderOpen,
-  Trophy,
   Bell,
-  Bot,
   Settings,
   MessageCircle,
   LogOut,
@@ -48,20 +45,6 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const { signOut, isAdmin, role } = useAuth();
   const navigate = useNavigate();
 
-  // Dynamic nav items based on role
-  let displayNavItems = navItems;
-  if (role === "admin") {
-    displayNavItems = [
-      { path: "/admin", label: "Admin Dashboard", icon: ShieldCheck },
-      { path: "/staff-management", label: "Staff Management", icon: Users },
-      { path: "/admin-settings", label: "Admin Settings", icon: Settings },
-    ];
-  } else if (role === "worker") {
-    displayNavItems = [
-      { path: "/field-dashboard", label: "Field Dashboard", icon: Wrench },
-    ];
-  }
-
   const handleLogoClick = () => {
     if (role === "admin") {
       navigate("/admin");
@@ -70,12 +53,33 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
     } else {
       navigate("/dashboard");
     }
-    if (window.innerWidth < 1024 && isOpen) onToggle();
+    if (window.innerWidth < 1024) {
+      onToggle();
+    }
   };
+
+  const adminNavItems = [
+    { path: "/admin", label: "Admin Console", icon: ShieldCheck },
+    { path: "/staff-management", label: "Staff Workforce", icon: Users },
+    { path: "/notifications", label: "Broadcast Alerts", icon: Bell },
+    { path: "/admin-settings", label: "System Settings", icon: Settings },
+  ];
+
+  const workerNavItems = [
+    { path: "/field-dashboard", label: "Assigned Work Orders", icon: Wrench },
+    { path: "/notifications", label: "Dispatch Alerts", icon: Bell },
+    { path: "/worker-settings", label: "Worker Settings", icon: Settings },
+  ];
+
+  const displayNavItems =
+    role === "admin"
+      ? adminNavItems
+      : role === "worker"
+      ? workerNavItems
+      : navItems;
 
   return (
     <>
-      {/* Overlay for mobile */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
@@ -115,10 +119,9 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
                 <h2 className="font-bold text-gray-800 dark:text-white">
                   OneServe
                 </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Menu</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Civic Portal</p>
               </div>
             </div>
-            {/* Close button removed as per request */}
           </div>
 
           {/* Navigation items */}
@@ -135,7 +138,7 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
                         if (window.innerWidth < 1024) onToggle();
                       }}
                       className={({ isActive }) => `
-                        w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                        w-full flex items-center justify-between px-3 py-2.5 rounded-lg
                         transition-all duration-200
                         ${
                           isActive
@@ -146,10 +149,15 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
                     >
                       {({ isActive }) => (
                         <>
-                          <Icon
-                            className={`h-5 w-5 ${isActive ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"}`}
-                          />
-                          <span className="text-sm">{item.label}</span>
+                          <div className="flex items-center gap-3">
+                            <Icon
+                              className={`h-5 w-5 ${isActive ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"}`}
+                            />
+                            <span className="text-sm">{item.label}</span>
+                          </div>
+                          {item.path === "/notifications" && (
+                            <span className="w-2 h-2 rounded-full bg-blue-600 ring-4 ring-blue-100 dark:ring-blue-900/40"></span>
+                          )}
                         </>
                       )}
                     </NavLink>

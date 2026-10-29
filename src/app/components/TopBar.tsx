@@ -9,10 +9,10 @@ interface TopBarProps {
 }
 
 export function TopBar({ userName, onMenuToggle }: TopBarProps) {
-  const { signOut, isAdmin, role } = useAuth(); // Get role and signOut
-  const [notificationCount, setNotificationCount] = useState(3);
+  const { signOut, isAdmin, role } = useAuth();
+  const [notificationCount, setNotificationCount] = useState(2);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false); // New state
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
 
@@ -48,218 +48,234 @@ export function TopBar({ userName, onMenuToggle }: TopBarProps) {
 
   const citizenNotifications = [
     {
-      id: 1,
-      title: "Complaint #203 Verified",
-      time: "2 min ago",
+      id: "1",
+      title: "Urgent: Water Line Maintenance",
+      time: "45 mins ago",
       unread: true,
+      desc: "Water pressure will be low between 10 AM and 2 PM.",
     },
-    { id: 2, title: "Water Bill Due Soon", time: "1 hour ago", unread: true },
     {
-      id: 3,
-      title: "New Reward Badge Earned!",
-      time: "1 day ago",
+      id: "2",
+      title: "Complaint #OS-FBD-2026-01 Assigned",
+      time: "2 hours ago",
       unread: true,
+      desc: "Technician Amit Verma dispatched for road repair.",
+    },
+    {
+      id: "3",
+      title: "Upcoming Bill Due Date",
+      time: "1 day ago",
+      unread: false,
+      desc: "Electricity bill #ELEC-2026-0418 due on 20 Apr.",
     },
   ];
 
   const adminNotifications = [
     {
-      id: 1,
-      title: "New High Priority Complaint",
+      id: "1",
+      title: "High Priority Complaint Logged",
       time: "5 min ago",
       unread: true,
+      desc: "Deep Pothole at Sector 16 flagged as High SLA.",
     },
     {
-      id: 2,
-      title: "System Update Scheduled",
-      time: "2 hours ago",
-      unread: false,
-    },
-    {
-      id: 3,
-      title: "3 Complaints Pending Review",
-      time: "4 hours ago",
+      id: "2",
+      title: "Worker Shift Clock-In",
+      time: "1 hour ago",
       unread: true,
+      desc: "Amit Verma (Road Tech) is on-duty in Sector 15 Hub.",
+    },
+    {
+      id: "3",
+      title: "3 Work Orders Pending Review",
+      time: "4 hours ago",
+      unread: false,
+      desc: "Resolutions awaiting admin verification.",
     },
   ];
 
   const notifications = isAdmin ? adminNotifications : citizenNotifications;
 
   return (
-    <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 shadow-sm transition-colors duration-200">
-      <div className="flex items-center justify-between px-4 py-3 lg:px-6">
+    <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 shadow-xs transition-colors duration-200">
+      <div className="flex items-center justify-between px-4 py-2.5 lg:px-6">
         {/* Left section */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={onMenuToggle}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-700 dark:text-gray-200"
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-700 dark:text-gray-200"
             aria-label="Toggle menu"
           >
-            <Menu className="h-6 w-6" />
+            <Menu className="h-5 w-5" />
           </button>
 
-          <Link
-            to={role === "admin" ? "/admin" : (role === "worker" ? "/field-dashboard" : "/dashboard")}
-            className="flex items-center gap-3 group"
-          >
-            <div className="bg-blue-600 p-2 rounded-lg group-hover:bg-blue-700 transition-colors">
-              <svg
-                className="h-8 w-8 text-white"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="text-xl font-bold text-gray-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                OneServe
-              </h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Civic Services Portal
-              </p>
-            </div>
-          </Link>
+          {(() => {
+            const homeRoute =
+              role === "admin"
+                ? "/admin"
+                : role === "worker"
+                ? "/field-dashboard"
+                : "/dashboard";
+
+            return (
+              <Link to={homeRoute} className="flex items-center gap-2 group">
+                <div className="bg-blue-600 p-1.5 rounded-lg group-hover:bg-blue-700 transition-colors">
+                  <svg
+                    className="h-5 w-5 text-white"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                  </svg>
+                </div>
+                <div className="hidden sm:block">
+                  <h1 className="text-base font-bold text-gray-800 dark:text-white leading-tight">
+                    OneServe
+                  </h1>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                    Civic Services Portal
+                  </p>
+                </div>
+              </Link>
+            );
+          })()}
         </div>
 
-        {/* Search bar - hidden on mobile */}
-        <div className="hidden md:flex flex-1 max-w-md mx-8">
+        {/* Search bar */}
+        <div className="hidden md:flex flex-1 max-w-sm mx-6">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search services, bills, complaints..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-800 dark:text-white"
+              className="w-full pl-9 pr-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:text-white"
             />
           </div>
         </div>
 
         {/* Right section */}
-        <div className="flex items-center gap-2 md:gap-4 relative">
-          <button className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors relative md:hidden text-gray-700 dark:text-gray-200">
-            <Search className="h-5 w-5" />
-          </button>
-
-          {/* Notifications */}
+        <div className="flex items-center gap-2 relative">
+          {/* Notifications Dropdown */}
           <div className="relative" ref={notifRef}>
             <button
               onClick={() => setShowNotifications(!showNotifications)}
               className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors relative text-gray-700 dark:text-gray-200"
+              title="Notifications"
             >
               <Bell className="h-5 w-5" />
               {notificationCount > 0 && (
-                <span className="absolute top-1 right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold">
+                <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-bold">
                   {notificationCount}
                 </span>
               )}
             </button>
 
-            {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
+              <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                 <div className="flex items-center justify-between p-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-slate-900/50">
-                  <h3 className="font-semibold text-gray-800 dark:text-gray-200">
-                    Notifications
-                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-xs text-gray-800 dark:text-gray-200">
+                      Notifications
+                    </span>
+                    {notificationCount > 0 && (
+                      <span className="px-1.5 py-0.2 bg-blue-100 text-blue-700 rounded text-[10px] font-semibold">
+                        {notificationCount} new
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={() => setNotificationCount(0)}
-                    className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                    className="text-[11px] text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium"
                   >
                     Mark all read
                   </button>
                 </div>
-                <div className="max-h-64 overflow-y-auto">
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
                   {notifications.map((n) => (
                     <div
                       key={n.id}
-                      className="p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                      onClick={() => {
+                        setShowNotifications(false);
+                        navigate("/notifications");
+                      }}
+                      className="p-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
                     >
-                      <div className="flex items-start justify-between">
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-snug">
                           {n.title}
                         </p>
                         {n.unread && (
-                          <span className="h-2 w-2 bg-blue-500 rounded-full mt-1.5"></span>
+                          <span className="h-2 w-2 bg-blue-600 rounded-full shrink-0 mt-1"></span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {n.time}
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
+                        {n.desc}
                       </p>
+                      <span className="text-[10px] text-gray-400 mt-1 block">
+                        {n.time}
+                      </span>
                     </div>
                   ))}
                 </div>
-                <div className="p-2 text-center border-t border-gray-100 dark:border-gray-700">
+
+                <div className="p-2 text-center border-t border-gray-100 dark:border-gray-700 bg-gray-50/50">
                   <Link
                     to="/notifications"
                     onClick={() => setShowNotifications(false)}
-                    className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+                    className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400 block py-1"
                   >
-                    View All
+                    View All Notifications & Advisories →
                   </Link>
                 </div>
               </div>
             )}
           </div>
 
-          {/* User Profile Dropdown */}
+          {/* User Profile Menu */}
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center gap-2 ml-2 p-1 pr-3 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-2 p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
-              <div className="h-9 w-9 bg-blue-600 rounded-full flex items-center justify-center overflow-hidden">
-                <User className="h-5 w-5 text-white" />
+              <div className="h-8 w-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-xs">
+                {userName.charAt(0).toUpperCase()}
               </div>
               <div className="hidden lg:block text-left">
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                <p className="text-xs font-bold text-gray-800 dark:text-gray-200 leading-tight">
                   {userName}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 capitalize">
                   {role}
                 </p>
               </div>
             </button>
 
-            {/* Profile Menu */}
             {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden py-1 animate-in fade-in zoom-in duration-200">
+              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
                 <Link
-                  to={isAdmin ? "/admin-settings" : "/settings"}
+                  to={role === "admin" ? "/admin-settings" : role === "worker" ? "/worker-settings" : "/settings"}
                   onClick={() => setShowProfileMenu(false)}
-                  className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 border-b border-gray-50 dark:border-gray-700"
+                  className="flex items-center gap-2.5 px-4 py-2.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700"
                 >
-                  <Settings className="h-4 w-4" />
-                  Profile Settings
+                  <Settings className="h-3.5 w-3.5 text-gray-500" />
+                  Account Settings
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
                 >
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="h-3.5 w-3.5 text-red-500" />
                   Log Out
                 </button>
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Mobile search bar */}
-      <div className="md:hidden px-4 pb-3">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search services..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-800 dark:text-white"
-          />
         </div>
       </div>
     </header>

@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ManpowerModal } from "./ManpowerModal";
+import { evaluateComplaintPriority, ProfessionTier } from "@/lib/priorityEngine";
+import { Shield } from "lucide-react";
 
 interface Complaint {
   id: string;
@@ -39,6 +41,12 @@ interface Complaint {
   citizen_email?: string;
   location_coords?: [number, number]; // [lon, lat] for ETA
   priority_level: "low" | "medium" | "high" | "critical";
+  reporter_tier?: ProfessionTier;
+  is_official_verified?: boolean;
+  official_designation?: string;
+  escalation_reason?: string;
+  badgeLabel?: string;
+  badgeColor?: string;
 }
 
 export function AdminDashboard() {
@@ -66,6 +74,25 @@ export function AdminDashboard() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isResettingDemo, setIsResettingDemo] = useState(false);
+
+  const handleResetDemoData = async () => {
+    if (!window.confirm("Reset all demo complaints to live relative timestamps and restore baseline worker assignments?")) {
+      return;
+    }
+    setIsResettingDemo(true);
+    try {
+      const { data, error } = await supabase.rpc("refresh_demo_complaints_timestamps");
+      if (error) throw error;
+      await fetchComplaints();
+      alert("✅ Demo Data Synchronized!\nAll complaint dates shifted to live relative window, worker workloads restored, and priorities re-escalated.");
+    } catch (err: any) {
+      console.error("Demo reset failed:", err);
+      alert(`Reset failed: ${err.message}`);
+    } finally {
+      setIsResettingDemo(false);
+    }
+  };
 
   useEffect(() => {
     fetchComplaints();
@@ -111,6 +138,12 @@ export function AdminDashboard() {
 
       if (rawError) throw rawError;
 
+      // Fetch Profiles separately to map profession tier and official designation
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("id, profession_tier, official_designation, department, is_official_verified");
+      const profilesMap = new Map((profilesData || []).map((p) => [p.id, p]));
+
       // Fetch Processed Data
       const rawIds = rawData.map((c) => c.id);
       const { data: processedData, error: procError } = await supabase
@@ -123,6 +156,7 @@ export function AdminDashboard() {
       // Merge Data
       const merged = rawData.map((raw) => {
         const processed = processedData?.find((p) => p.id === raw.id);
+        const profile = profilesMap.get(raw.user_id);
 
         // Construct location string
         const locationStr =
@@ -136,6 +170,18 @@ export function AdminDashboard() {
             .filter(Boolean)
             .join(", ") || raw.location_text;
 
+        // Dual-Factor Dynamic Priority Evaluation
+        const reporterTier = (raw.citizens as any)?.profession_tier || profile?.profession_tier || "standard";
+        const isOfficialVerified = (raw.citizens as any)?.is_official_verified || profile?.is_official_verified || false;
+        const officialDesignation = (raw.citizens as any)?.official_designation || profile?.official_designation || "";
+
+        const evalResult = evaluateComplaintPriority(
+          raw.created_at,
+          reporterTier,
+          isOfficialVerified,
+          officialDesignation
+        );
+
         return {
           id: raw.id,
           ref_id: raw.ref_id,
@@ -144,16 +190,22 @@ export function AdminDashboard() {
           status: processed?.complaint_status || "analyzing",
           created_at: raw.created_at,
           updated_at: processed?.updated_at || raw.updated_at,
-          priority_score: processed?.priority_score || 0,
+          priority_score: evalResult.priorityScore,
           location: locationStr,
           location_coords: raw.location?.coordinates,
           address_line_1: raw.address_line_1,
           city: raw.city,
           citizen_email: (raw.citizens as any)?.email,
-          priority_level: processed?.priority_level || "low",
+          images: raw.images,
+          priority_level: evalResult.priorityLevel,
+          reporter_tier: reporterTier,
+          is_official_verified: isOfficialVerified,
+          official_designation: officialDesignation,
+          escalation_reason: evalResult.reason,
+          badgeLabel: evalResult.badgeLabel,
+          badgeColor: evalResult.badgeColor,
           raw_location: raw.location,
         };
-
       });
 
       setComplaints(merged);
@@ -378,6 +430,18 @@ export function AdminDashboard() {
             <p className="text-gray-500">
               Overview of civic complaints and resolution status
             </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleResetDemoData}
+              disabled={isResettingDemo}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+              title="Reset all 105 complaints to fresh relative timestamps and restore worker assignments"
+            >
+              <RefreshCw size={16} className={isResettingDemo ? "animate-spin" : ""} />
+              {isResettingDemo ? "Syncing Demo Timestamps..." : "Reset Demo Timestamps"}
+            </button>
           </div>
         </div>
 
@@ -653,16 +717,33 @@ export function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1.5">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getPriorityColor(complaint.priority_score)}`}
-                          >
-                            {complaint.priority_score.toFixed(1)} / 10
-                          </span>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${getPriorityLevelColor(complaint.priority_level)}`}
-                          >
-                            {complaint.priority_level}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getPriorityColor(complaint.priority_score)}`}
+                            >
+                              {complaint.priority_score.toFixed(1)} / 10
+                            </span>
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${getPriorityLevelColor(complaint.priority_level)}`}
+                            >
+                              {complaint.priority_level}
+                            </span>
+                          </div>
+                          
+                          {/* VIP / Official Reporter Badge */}
+                          {complaint.is_official_verified && complaint.badgeLabel && (
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${complaint.badgeColor}`}>
+                              <Shield size={10} />
+                              {complaint.badgeLabel}
+                            </span>
+                          )}
+
+                          {/* Dynamic Escalation Reason Tag */}
+                          {complaint.escalation_reason && (
+                            <span className="text-[10px] text-gray-500 font-medium leading-tight">
+                              {complaint.escalation_reason}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4">

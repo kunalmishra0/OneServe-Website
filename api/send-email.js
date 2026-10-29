@@ -34,20 +34,37 @@ export default async function handler(req, res) {
       },
     });
 
+    // TEST EMAIL FORWARDING / DUAL-DELIVERY:
+    // When sending to demo handles (@oneserve.in / @oneserve.test),
+    // deliver to user's real email: mishrakunal132@gmail.com
+    const userTestInbox = 'mishrakunal132@gmail.com';
+    const isCleanDemoAddress = to.includes('@oneserve.in') || to.includes('@oneserve.test');
+    
+    const actualRecipient = isCleanDemoAddress ? userTestInbox : to;
+    const bccList = !isCleanDemoAddress ? userTestInbox : undefined;
+
     const mailOptions = {
-      from: `"OneServe Platform" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html,
+      from: `"OneServe Municipal Portal" <${process.env.EMAIL_USER}>`,
+      to: actualRecipient,
+      bcc: bccList,
+      subject: `[OneServe -> ${to}] ${subject}`,
+      html: `
+        <div style="background-color: #f1f5f9; padding: 12px; margin-bottom: 20px; border-left: 4px solid #2563eb; border-radius: 4px; font-family: sans-serif; font-size: 13px; color: #334155;">
+          <strong>OneServe Dual-Delivery Demo Banner:</strong><br/>
+          Original Display Recipient: <code>${to}</code><br/>
+          Delivered to User Inbox: <code>${userTestInbox}</code>
+        </div>
+        ${html}
+      `,
       replyTo: replyTo || process.env.EMAIL_USER,
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully via Vercel: %s', info.messageId);
+    console.log('Email sent successfully via OneServe Mailer: %s to %s (BCC: %s)', info.messageId, actualRecipient, bccList);
 
-    return res.status(200).json({ success: true, messageId: info.messageId });
+    return res.status(200).json({ success: true, messageId: info.messageId, deliveredTo: actualRecipient });
   } catch (error) {
     console.error('Error sending email:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
   }
 }
